@@ -1,15 +1,16 @@
-# AMG Lock App — GitHub Actions se test APK banana
+# AMG Lock App — GitHub Actions se test APK banana (FIXED v2)
 #
-# YE FILE REPO KI ROOT MEIN DALNI HAI, is naam se:
+# YE FILE REPO KI ROOT MEIN HAI, is naam se:
 #   .github/workflows/build-apk.yml
-# (Repo mein: Add file -> Create new file -> naam upar wala likhein,
-#  phir is file ka poora text paste karke Commit changes dabayein.)
+# Update karne ke liye: GitHub par file kholein -> pencil (Edit) dabayein
+# -> poora text select karke delete karein -> is file ka poora text
+# paste karein -> Commit changes dabayein. Build dobara chal pare gi.
 #
-# Wajah: lock-app ka code repo mein "lock-app" folder ke andar hai,
-# is liye ye workflow "lock-app" ke andar ja kar build chalata hai.
-# Commit karte hi Actions tab mein "Build APK" khud chal pare ga.
-# Khatam hone par us run ko kholein, neeche "Artifacts" mein
-# "app-debug" mile ga — download karke app-debug.apk nikal lein.
+# Fix (2026-11-13): "Android SDK lagayein" wala step (android-actions/
+# setup-android@v3) naye runner par fail ho gaya tha — wo action purana
+# hai. Usay hata diya: GitHub ke runner mein Android SDK pehle se hota
+# hai, aur -Pandroid.builder.sdkDownload=true se koi kami wali cheez
+# (platform/build-tools) build ke waqt khud download ho jati hai.
 name: Build APK
 
 on:
@@ -30,9 +31,6 @@ jobs:
           java-version: "17"
           distribution: "temurin"
 
-      - name: Android SDK lagayein
-        uses: android-actions/setup-android@v3
-
       - name: gradle-wrapper.jar lein (agar na ho)
         working-directory: lock-app
         run: |
@@ -46,7 +44,7 @@ jobs:
 
       - name: Test APK banayein
         working-directory: lock-app
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug -Pandroid.builder.sdkDownload=true
 
       - name: APK save karein
         uses: actions/upload-artifact@v4

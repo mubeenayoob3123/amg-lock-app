@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AMG Lock</string>
+
+    <!-- Main / setup -->
+    <string name="setup_title">AMG Lock — Setup</string>
+    <string name="setup_subtitle">Ye app Al Arab Electronic ki qist wale phone par chalti hai. Pehle shop par QR se set hogi, phir ye khud lock / unlock kare gi.</string>
+    <string name="server_url_label">Server URL (dashboard ka link)</string>
+    <string name="pairing_code_label">Pairing Code (dashboard se mila code)</string>
+    <string name="register_button">Phone Register Karein</string>
+    <string name="check_now_button">Abhi Check Karein</string>
+    <string name="status_label">Halat</string>
+    <string name="status_not_registered">Register nahi hai — pairing code likhein</string>
+    <string name="status_active">Active — qist chal rahi hai</string>
+    <string name="status_warning">Warning — qist late hai, grace period chal raha hai</string>
+    <string name="status_locked">LOCKED — qist ada karein</string>
+    <string name="status_completed">Mubarak — tamam qistein ada, phone aap ka hai</string>
+    <string name="due_label">Agli qist</string>
+    <string name="remaining_label">Baqi raqam</string>
+    <string name="grace_label">Grace period baqi</string>
+    <string name="shop_label">Shop</string>
+    <string name="device_owner_label">Device Owner</string>
+    <string name="device_owner_yes">Active hai — phone lock ho sakta hai</string>
+    <string name="device_owner_no">Active NAHI hai — ye normal app hai, lock nahi kare gi. QR se set karein.</string>
+
+    <!-- Lock screen -->
+    <string name="locked_title">Ye phone LOCK hai</string>
+    <string name="locked_reason">Aap ki qist waqt par ada nahi hui.</string>
+    <string name="locked_pay">Qist ada karein to phone khud khul jaye ga.</string>
+    <string name="locked_amount">Baqi raqam</string>
+    <string name="locked_due">Qist ki tareekh</string>
+    <string name="locked_shop">Madad ke liye shop se rabta karein</string>
+    <string name="offline_code_hint">Offline code likhein (shop se mila code)</string>
+    <string name="offline_unlock_button">Code Se Kholein</string>
+    <string name="offline_code_wrong">Ghalat code — dobara likhein</string>
+    <string name="offline_code_used">Ye code pehle istemal ho chuka hai</string>
+    <string name="warning_title">Warning — Qist Late Hai</string>
+    <string name="warning_body">Aap ki qist late hai. Grace period khatam hone par phone lock ho jaye ga. Abhi ada karein.</string>
+    <string name="completed_title">Mubarak! Phone Aap Ka Hai</string>
+    <string name="completed_body">Tamam qistein ada ho gayi hain. Ye app khud uninstall ho jaye gi aur phone hamesha ke liye khul jaye ga.</string>
+</resources>

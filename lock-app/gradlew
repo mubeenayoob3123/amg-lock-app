@@ -1,0 +1,47 @@
+#!/bin/sh
+#
+# AMG Lock — Gradle wrapper bootstrap (small version).
+# Android Studio normally generates the full wrapper itself when you open
+# this project; this script is for command-line builds on Linux/macOS.
+# It reads gradle/wrapper/gradle-wrapper.properties, downloads the
+# distribution once into ~/.gradle/wrapper/dists, then runs it.
+# Windows users: use Android Studio (Build menu) instead.
+#
+set -e
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_PROPS="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
+DIST_URL=$(grep '^distributionUrl=' "$WRAPPER_PROPS" | cut -d= -f2- | sed 's/\\:/:/g')
+DIST_FILE=$(basename "$DIST_URL")
+GRADLE_USER_HOME="${GRADLE_USER_HOME:-$HOME/.gradle}"
+DIST_DIR="$GRADLE_USER_HOME/wrapper/dists/${DIST_FILE%.zip}"
+GRADLE_BIN="$DIST_DIR/bin/gradle"
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  echo "Downloading Gradle ($DIST_URL) — first time only..."
+  TMP_DIR=$(mktemp -d)
+  if command -v curl >/dev/null 2>&1; then
+    curl -L -o "$TMP_DIR/gradle.zip" "$DIST_URL"
+  elif command -v wget >/dev/null 2>&1; then
+    wget -O "$TMP_DIR/gradle.zip" "$DIST_URL"
+  else
+    echo "ERROR: curl or wget is required to download Gradle." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$DIST_DIR")"
+  unzip -q "$TMP_DIR/gradle.zip" -d "$TMP_DIR/unzipped"
+  mkdir -p "$DIST_DIR"
+  cp -r "$TMP_DIR/unzipped"/*/* "$DIST_DIR/"
+  rm -rf "$TMP_DIR"
+fi
+
+if [ -z "$JAVA_HOME" ]; then
+  if command -v java >/dev/null 2>&1; then
+    JAVA_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v java)")")")
+    export JAVA_HOME
+  else
+    echo "ERROR: Java 17 is required (set JAVA_HOME or install JDK 17)." >&2
+    exit 1
+  fi
+fi
+
+exec "$GRADLE_BIN" "$@"

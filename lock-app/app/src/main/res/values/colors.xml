@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same palette as the AMG dashboard / Figma: navy + emerald + amber/red -->
+    <color name="navy">#0F1E3D</color>
+    <color name="emerald">#0E9F7A</color>
+    <color name="amber">#F59E0B</color>
+    <color name="red">#DC2626</color>
+    <color name="bg">#F6F7FB</color>
+    <color name="white">#FFFFFF</color>
+    <color name="text">#111827</color>
+    <color name="muted">#6B7280</color>
+</resources>

@@ -1,6 +1,7 @@
 package pk.amgsystems.lock
 
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -69,8 +70,18 @@ class LockActivity : AppCompatActivity() {
             return
         }
         // Pin the phone to this screen while Device Owner is active.
+        // A-M12: a failed pin used to be silent (runCatching, no log),
+        // so a broken lock looked identical to a working one. Now a
+        // failure is logged loudly, the Device Owner policies are
+        // re-applied (a missing setLockTaskPackages is the usual
+        // cause), and we fall back to locking the screen at once.
         if (lockManager.isDeviceOwner()) {
             runCatching { startLockTask() }
+                .onFailure { e ->
+                    Log.e(TAG, "startLockTask() FAILED — phone is NOT pinned, Home can escape the lock", e)
+                    lockManager.applyDeviceOwnerPolicies()
+                    lockManager.lockNow()
+                }
         }
         refreshUi()
     }
@@ -114,5 +125,9 @@ class LockActivity : AppCompatActivity() {
         }.start()
         Toast.makeText(this, "Phone khul gaya", Toast.LENGTH_SHORT).show()
         finish()
+    }
+
+    companion object {
+        private const val TAG = "LockActivity"
     }
 }

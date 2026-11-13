@@ -41,6 +41,17 @@ class MainActivity : AppCompatActivity() {
         store = LockStateStore(this)
         lockManager = LockManager(this)
 
+        // A-C1: Device Owner policies must be applied here too, not only
+        // after QR provisioning. `adb shell dpm set-device-owner` (the
+        // test route for the debug APK) never fires
+        // onProfileProvisioningComplete, so without this
+        // setLockTaskPackages() never runs and the lock cannot hold.
+        // Safe to call on every launch — it no-ops when this app is not
+        // Device Owner, and every policy call inside is idempotent.
+        if (lockManager.isDeviceOwner()) {
+            lockManager.applyDeviceOwnerPolicies()
+        }
+
         binding.etServerUrl.setText(store.serverUrl)
         binding.etPairingCode.setText(store.pairingCode)
 

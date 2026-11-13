@@ -13,7 +13,10 @@ import android.util.Log
  * All Device Owner powers live here and NOWHERE else, so the rules
  * are easy to audit:
  *
- *  - applyDeviceOwnerPolicies(): called once after QR provisioning.
+ *  - applyDeviceOwnerPolicies(): called after QR provisioning, and
+ *    re-applied on every MainActivity launch (the adb
+ *    `set-device-owner` test path never fires the provisioning
+ *    callback, so without this the policies would never run there).
  *      * This app becomes the launcher/home (customer cannot leave it
  *        by pressing Home while locked — lock task mode handles that).
  *      * Uninstall blocked, factory reset blocked (Settings + recovery
@@ -47,7 +50,12 @@ class LockManager(private val context: Context) {
 
     fun isAdminActive(): Boolean = dpm.isAdminActive(admin)
 
-    /** One-time setup after QR provisioning. No-op (with a log) if not Device Owner. */
+    /**
+     * Setup after QR provisioning, re-applied on every MainActivity
+     * launch so the adb set-device-owner path gets the same policies.
+     * Safe to call repeatedly — every call below is idempotent.
+     * No-op (with a log) if not Device Owner.
+     */
     fun applyDeviceOwnerPolicies() {
         if (!isDeviceOwner()) {
             Log.w(TAG, "Not Device Owner — policies NOT applied (normal install)")
@@ -79,7 +87,29 @@ class LockManager(private val context: Context) {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
         context.startActivity(intent)
-        Log.i(TAG, "Phone LOCKED")
+        // NOTE (A-M12): this only means the lock screen was launched.
+        // Whether the phone is actually pinned is decided in
+        // LockActivity.onResume — see the failure log + lockNow()
+        // fallback there. Do not log "Phone LOCKED" here: a failed pin
+        // would look identical to a successful lock.
+        Log.i(TAG, "Lock screen launched (pinning happens in LockActivity)")
+    }
+
+    /**
+     * Fallback when lock-task pinning fails (A-M12): lock the device
+     * screen immediately via DevicePolicyManager. The lock screen
+     * (LockActivity, showWhenLocked) is what the customer sees when
+     * the phone wakes, so the phone is still protected even though
+     * it is not pinned. No-op (with a log) if not Device Owner.
+     */
+    fun lockNow() {
+        if (!isDeviceOwner()) {
+            Log.w(TAG, "lockNow() fallback skipped — not Device Owner")
+            return
+        }
+        runCatching { dpm.lockNow() }
+            .onFailure { Log.e(TAG, "lockNow() fallback also FAILED", it) }
+            .onSuccess { Log.i(TAG, "lockNow() fallback applied (pin failed)") }
     }
 
     /** Normal unlock (payment received / offline code used). */

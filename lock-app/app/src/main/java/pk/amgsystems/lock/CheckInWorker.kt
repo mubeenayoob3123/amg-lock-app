@@ -13,7 +13,8 @@ import androidx.work.WorkerParameters
  *     there is nothing left to lock, and the app should be gone anyway.
  *  3. Ask the server. No internet / server down -> Result.success()
  *     anyway (do NOT retry aggressively): the cached lock state stays,
- *     the next 15-minute tick tries again.
+ *     the next 15-minute tick tries again. Lekin nakaami ka status
+ *     darj hota hai taake UI par nazar aaye (F-31), khamosh retry nahi.
  *  4. Apply the answer via PolicyEngine.
  *
  * Why WorkManager and not a foreground service? WorkManager survives
@@ -38,11 +39,25 @@ class CheckInWorker(
             Log.d(TAG, "Already completed — skipping check-in")
             return Result.success()
         }
-        val result = ServerApi(applicationContext).checkIn() ?: run {
-            Log.w(TAG, "Check-in failed (offline?) — cached state kept")
-            return Result.success()
+        when (val outcome = ServerApi(applicationContext).checkIn()) {
+            is ServerApi.CheckInOutcome.Success -> {
+                PolicyEngine.apply(applicationContext, outcome.result)
+            }
+            is ServerApi.CheckInOutcome.ServerError -> {
+                // Server ne jawab diya magar mana kar diya (masalan
+                // device_not_registered) — ye "internet nahi" NAHI hai (A-M2).
+                PolicyEngine.recordFailure(
+                    applicationContext,
+                    PolicyEngine.CheckInStatus.serverError(outcome.error)
+                )
+            }
+            is ServerApi.CheckInOutcome.NetworkError -> {
+                PolicyEngine.recordFailure(
+                    applicationContext,
+                    PolicyEngine.statusFor(outcome.kind)
+                )
+            }
         }
-        PolicyEngine.apply(applicationContext, result)
         return Result.success()
     }
 

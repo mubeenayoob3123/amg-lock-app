@@ -1,5 +1,8 @@
 package pk.amgsystems.lock
 
+import android.content.Intent
+import android.content.SharedPreferences
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -17,17 +20,24 @@ import pk.amgsystems.lock.databinding.ActivityLockBinding
  * Behaviour:
  *  - Back button is disabled. Home / Recents cannot escape while lock
  *    task mode is active (Device Owner). The status bar is disabled.
+ *  - Amount dikhaya jata hai OVERDUE qist ka (F-21 / 3.5) — kul baqi
+ *    raqam nahi. Server jab overdueAmount bhejta hai to wahi, warna
+ *    purani kul raqam (fallback). Saath mein: kitni qistein late hain,
+ *    kitne din late, phone kab se lock hai, agla check kab ho ga (F-24, F-29).
+ *  - "Abhi Check Karein" (F-28): payment ke baad customer khud dobara
+ *    check kar sakta hai — 15 minute ka intezar nahi.
+ *  - Emergency call (1122) aur shop ko call (F-22): dialer lock-task
+ *    allowlist mein hai (LockManager.refreshLockTaskPackages), is liye
+ *    ye buttons lock screen se bhi chalte hain.
  *  - Offline code: the customer types the one-time code the shop gave
- *    them (from the dashboard). It is checked against the locally
- *    stored hash — NO internet needed. On success the code is burned
- *    and the phone unlocks. On failure nothing changes.
- *  - If the phone IS online, a successful offline unlock is also
- *    reported to the server, and a fresh check-in runs: if the qist
- *    is still unpaid the server will lock the phone again at the next
- *    check-in. The offline code is an emergency key, not a free pass.
- *  - While this screen is open it re-checks the state in onResume:
- *    if a payment unlocked the phone (e.g. via WorkManager), this
- *    screen closes itself and the phone is usable again.
+ *    them. It is checked against the locally stored hash — NO internet
+ *    needed. On success the code is burned and the phone unlocks.
+ *    Istemal shuda code dobara nahi chalta, chahe offline istemal hua
+ *    ho (A-M3 — used-hash record + pending server report).
+ *  - Lock screen background unlock par khud band hoti hai (F-26 / A-M5):
+ *    lock-state ka listener state badalte hi stopLockTask() + finish()
+ *    karta hai. Har unlock path par stopLockTask() chalta hai, warna
+ *    customer Setup screen mein phans jata hai (pin trap, A-M4 / F-27).
  */
 class LockActivity : AppCompatActivity() {
 
@@ -35,6 +45,13 @@ class LockActivity : AppCompatActivity() {
     private lateinit var store: LockStateStore
     private lateinit var lockManager: LockManager
     private lateinit var offlineStore: OfflineCodeStore
+    private var checking = false
+
+    /** F-26 / A-M5: background unlock par lock screen khud band ho. */
+    private val stateListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key != LockStateStore.KEY_LOCK_STATE) return@OnSharedPreferenceChangeListener
+        runOnUiThread { onLockStateChanged() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,12 +61,14 @@ class LockActivity : AppCompatActivity() {
         store = LockStateStore(this)
         lockManager = LockManager(this)
         offlineStore = OfflineCodeStore(this)
+        store.addListener(stateListener)
 
-        // Show above the keyguard, keep the screen on.
+        // Show above the keyguard, wake the screen.
+        // A-n9: FLAG_KEEP_SCREEN_ON hata diya — raat ko lock hone par
+        // screen poori raat jalti rehti thi aur battery khatam hoti thi.
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
 
         // Back button must not close the lock screen.
@@ -60,13 +79,21 @@ class LockActivity : AppCompatActivity() {
         })
 
         binding.btnOfflineUnlock.setOnClickListener { tryOfflineUnlock() }
+        binding.btnCheckAgain.setOnClickListener { checkAgain() }
+        binding.btnEmergency.setOnClickListener { dialNumber(EMERGENCY_NUMBER) }
+        binding.btnCallShop.setOnClickListener { dialNumber(store.shopPhone) }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        store.removeListener(stateListener)
     }
 
     override fun onResume() {
         super.onResume()
         if (store.lockState != LockState.LOCKED) {
             // We were unlocked (payment / permanent unlock) — leave.
-            finish()
+            dismissLockScreen()
             return
         }
         // Pin the phone to this screen while Device Owner is active.
@@ -86,28 +113,155 @@ class LockActivity : AppCompatActivity() {
         refreshUi()
     }
 
+    /** Lock state badli (listener se) — agar ab lock nahi to screen band karein. */
+    private fun onLockStateChanged() {
+        if (store.lockState == LockState.LOCKED) {
+            refreshUi()
+            return
+        }
+        dismissLockScreen()
+    }
+
+    /**
+     * Lock screen band karein — HAR path par pehle stopLockTask().
+     * A-M4 pin trap: is ke baghair task pinned rehta hai aur customer
+     * Setup screen mein phans jata hai (Home band rehta hai).
+     */
+    private fun dismissLockScreen() {
+        runCatching { stopLockTask() }
+            .onFailure { Log.d(TAG, "stopLockTask() on dismiss skipped/failed", it) }
+        if (store.lockState == LockState.COMPLETED) {
+            startActivity(Intent(this, CompletionActivity::class.java))
+        }
+        finish()
+    }
+
     private fun refreshUi() {
         binding.tvLockTitle.text = getString(R.string.locked_title)
         binding.tvLockReason.text = getString(R.string.locked_reason)
-        binding.tvLockDetails.text =
-            "${getString(R.string.locked_amount)}: Rs ${store.remainingAmount}\n" +
-                "${getString(R.string.locked_due)}: ${store.dueDate.ifBlank { "-" }}"
+
+        // 3.5 (F-21): OVERDUE qist ki raqam — kul baqi raqam nahi.
+        val hasOverdue = store.overdueAmount >= 0
+        val overdueAmount = if (hasOverdue) store.overdueAmount else store.remainingAmount
+        val overdueDue = store.overdueDueDate.ifBlank { store.dueDate }
+        val details = StringBuilder()
+        if (overdueAmount > 0) {
+            details.append("Rs $overdueAmount ${getString(R.string.lock_overdue_amount)}\n")
+        }
+        if (store.overdueCount > 1) {
+            details.append("${store.overdueCount} ${getString(R.string.lock_overdue_count)}\n")
+        }
+        if (overdueDue.isNotBlank()) {
+            details.append("${getString(R.string.locked_due)}: ${DateHelper.formatIsoDate(overdueDue)}\n")
+            val daysLate = DateHelper.daysOverdue(overdueDue)
+            if (daysLate > 0) {
+                details.append("$daysLate ${getString(R.string.lock_days_overdue)}\n")
+            }
+        }
+        // Kul baqi raqam sirf chhoti maloomat ke tor par neeche.
+        if (store.remainingAmount > 0 && store.remainingAmount != overdueAmount) {
+            details.append("${getString(R.string.lock_total_remaining)}: Rs ${store.remainingAmount}\n")
+        }
+        binding.tvLockDetails.text = details.toString().trimEnd()
+
+        // F-24: time context — kab se lock hai, agla check kab ho ga.
+        val timeContext = StringBuilder()
+        if (store.lockedSinceAt > 0) {
+            timeContext.append(
+                "${DateHelper.formatDateTime(store.lockedSinceAt)} ${getString(R.string.lock_locked_since)}"
+            )
+        }
+        val nextCheck = if (store.lastCheckInAt > 0) {
+            store.lastCheckInAt + CHECK_INTERVAL_MS
+        } else {
+            0L
+        }
+        if (nextCheck > 0) {
+            if (timeContext.isNotEmpty()) timeContext.append("\n")
+            timeContext.append("${getString(R.string.lock_next_check)}: ${DateHelper.formatTime(nextCheck)}")
+        }
+        binding.tvLockTime.text = timeContext.toString()
+        binding.tvLockTime.visibility = if (timeContext.isEmpty()) View.GONE else View.VISIBLE
+
         binding.tvShopContact.text = if (store.shopPhone.isNotBlank()) {
             "${store.shopName} — ${store.shopPhone}"
         } else {
             store.shopName
         }
+        binding.btnCallShop.visibility =
+            if (store.shopPhone.isNotBlank()) View.VISIBLE else View.GONE
+        binding.tvOfflineHint.text = getString(R.string.offline_code_hint2)
         binding.tvOfflineError.text = ""
+    }
+
+    /** F-28: payment ke baad customer khud dobara check kare. */
+    private fun checkAgain() {
+        if (checking) return
+        checking = true
+        binding.btnCheckAgain.isEnabled = false
+        binding.tvCheckStatus.text = getString(R.string.lock_checking)
+        Thread {
+            val outcome = ServerApi(this).checkIn()
+            runOnUiThread {
+                checking = false
+                binding.btnCheckAgain.isEnabled = true
+                when (outcome) {
+                    is ServerApi.CheckInOutcome.Success -> {
+                        PolicyEngine.apply(this, outcome.result)
+                        // Unlock hua to state listener screen khud band
+                        // kar de ga; warna halat waisi hi hai.
+                        if (store.lockState == LockState.LOCKED) {
+                            binding.tvCheckStatus.text = getString(R.string.lock_check_ok)
+                            refreshUi()
+                        }
+                    }
+                    is ServerApi.CheckInOutcome.NetworkError -> {
+                        binding.tvCheckStatus.text = when (outcome.kind) {
+                            ServerApi.ErrorKind.NO_INTERNET -> getString(R.string.lock_check_no_internet)
+                            ServerApi.ErrorKind.SERVER_ASLEEP -> getString(R.string.lock_check_server_slow)
+                            else -> getString(R.string.lock_check_server_error)
+                        }
+                        PolicyEngine.recordFailure(this, PolicyEngine.statusFor(outcome.kind))
+                    }
+                    is ServerApi.CheckInOutcome.ServerError -> {
+                        binding.tvCheckStatus.text = getString(R.string.lock_check_server_error)
+                        PolicyEngine.recordFailure(
+                            this,
+                            PolicyEngine.CheckInStatus.serverError(outcome.error)
+                        )
+                    }
+                }
+            }
+        }.start()
+    }
+
+    /** Emergency ya shop ko call — dialer lock-task allowlist mein hai. */
+    private fun dialNumber(rawNumber: String) {
+        val number = rawNumber.replace(" ", "").replace("-", "")
+        if (number.isBlank()) return
+        // Dialer allowlist mein ho (dobara yaqeeni banayein).
+        lockManager.refreshLockTaskPackages()
+        runCatching {
+            startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$number")))
+        }.onFailure {
+            Toast.makeText(this, getString(R.string.call_failed), Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun tryOfflineUnlock() {
         val code = binding.etOfflineCode.text.toString().trim().uppercase()
+        // F-25: khaali field ka paigham "ghalat code" se alag ho.
         if (code.isBlank()) {
-            binding.tvOfflineError.text = getString(R.string.offline_code_wrong)
+            binding.tvOfflineError.text = getString(R.string.offline_code_blank)
+            return
+        }
+        // A-M3: pehle istemal ho chuka code — saaf paigham.
+        if (offlineStore.wasAlreadyUsed(code)) {
+            binding.tvOfflineError.text = getString(R.string.offline_code_used)
             return
         }
         if (!offlineStore.hasCode()) {
-            binding.tvOfflineError.text = "Koi offline code jari nahi hua — shop se code lein"
+            binding.tvOfflineError.text = getString(R.string.offline_code_none)
             return
         }
         if (!offlineStore.verifyAndBurn(code)) {
@@ -116,18 +270,29 @@ class LockActivity : AppCompatActivity() {
         }
         // Code was correct AND is now burned. Unlock locally first
         // (works fully offline), then tell the server if we can.
+        // A-M3: report nakaam ho to pending rakhein — agli check-in
+        // par dobara bheja jaye ga (PolicyEngine.retryPendingCodeReport).
+        offlineStore.setPendingReport(code)
         lockManager.applyUnlock()
         Thread {
-            ServerApi(this).reportOfflineCodeUsed(code)
-            // Fresh check-in: if the qist is still unpaid, the server
-            // will lock again — the offline code is not a free pass.
-            ServerApi(this).checkIn()?.let { PolicyEngine.apply(this, it) }
+            if (ServerApi(this).reportOfflineCodeUsed(code)) {
+                offlineStore.clearPendingReport()
+            }
+            // Fresh check-in: server ab 24 ghante ki unlock window
+            // deta hai (D-M6), is liye agli check-in par dobara lock
+            // nahi hota jab tak window chal rahi ho.
+            when (val outcome = ServerApi(this).checkIn()) {
+                is ServerApi.CheckInOutcome.Success -> PolicyEngine.apply(this, outcome.result)
+                else -> Unit // offline: cached (unlocked) state rehti hai
+            }
         }.start()
-        Toast.makeText(this, "Phone khul gaya", Toast.LENGTH_SHORT).show()
-        finish()
+        Toast.makeText(this, getString(R.string.offline_unlock_done), Toast.LENGTH_SHORT).show()
+        dismissLockScreen()
     }
 
     companion object {
         private const val TAG = "LockActivity"
+        private const val EMERGENCY_NUMBER = "1122"
+        private const val CHECK_INTERVAL_MS = 15L * 60L * 1000L
     }
 }

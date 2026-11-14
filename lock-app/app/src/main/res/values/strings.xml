@@ -6,9 +6,15 @@
     <string name="setup_title">AMG Lock — Setup</string>
     <string name="setup_subtitle">Ye app Al Arab Electronic ki qist wale phone par chalti hai. Pehle shop par QR se set hogi, phir ye khud lock / unlock kare gi.</string>
     <string name="server_url_label">Server URL (dashboard ka link)</string>
-    <string name="pairing_code_label">Pairing Code (dashboard se mila code)</string>
+    <string name="server_url_note">Aam tor par isay badalne ki zaroorat nahi — ye pehle se theek bhara hua hai.</string>
+    <string name="pairing_code_label">Pairing Code (8 harf — dashboard se mila code)</string>
     <string name="register_button">Phone Register Karein</string>
+    <string name="registering">Register ho raha hai… (server jag raha ho to 1 minute lag sakta hai)</string>
+    <string name="register_done">Register ho gaya</string>
     <string name="check_now_button">Abhi Check Karein</string>
+    <string name="check_ok">Check ho gaya — halat theek hai</string>
+    <string name="check_ok_unlocked">Check ho gaya — phone ab theek hai</string>
+    <string name="check_first_register">Pehle register karein</string>
     <string name="status_label">Halat</string>
     <string name="status_not_registered">Register nahi hai — pairing code likhein</string>
     <string name="status_active">Active — qist chal rahi hai</string>
@@ -16,6 +22,7 @@
     <string name="status_locked">LOCKED — qist ada karein</string>
     <string name="status_completed">Mubarak — tamam qistein ada, phone aap ka hai</string>
     <string name="due_label">Agli qist</string>
+    <string name="monthly_label">Mahina-waar qist</string>
     <string name="remaining_label">Baqi raqam</string>
     <string name="grace_label">Grace period baqi</string>
     <string name="shop_label">Shop</string>
@@ -25,6 +32,43 @@
     <string name="not_protected_banner">Phone mehfooz NAHI hai — Device Owner band hai. Jab tak dobara set na ho, ye phone lock nahi ho sakta aur register bhi nahi ho ga.</string>
     <string name="register_blocked_owner">Pehle device owner banayein — phone abhi device owner nahi hai, is liye register nahi ho sakta aur lock nahi kare ga. Phone ko QR se set karein ya adb command se device owner banayein.</string>
 
+    <!-- Setup: success state + reset -->
+    <string name="setup_success_title">✓ Register ho gaya — phone mehfooz hai</string>
+    <string name="registered_account">Account</string>
+    <string name="last_check_label">Aakhri check</string>
+    <string name="offline_window_label">Offline code ki window khatam</string>
+    <string name="reset_button">Dobara Register Karein (Reset)</string>
+    <string name="reset_title">Dobara register karein?</string>
+    <string name="reset_message">Purani registration khatam ho jaye gi aur aap ko pairing code dobara likhna pare ga. Ye sirf tab karein jab shop ke kahe par code badal raha ho.</string>
+    <string name="reset_confirm">Haan, reset karein</string>
+    <string name="reset_cancel">Nahi</string>
+    <string name="reset_done">Reset ho gaya — pairing code dobara likhein</string>
+
+    <!-- Setup / check-in errors — saaf lafzon mein (F-11) -->
+    <string name="error_code_blank">Pehle pairing code likhein (8 harf wala code jo dashboard se mila)</string>
+    <string name="error_wrong_code">Code ghalat hai — dashboard se code dobara parh kar likhein</string>
+    <string name="error_no_internet">Internet nahi hai — Wi-Fi ya mobile data check karein, phir dobara karein</string>
+    <string name="error_server_asleep">Server so raha hai — 1 minute baad dobara karein</string>
+    <string name="error_bad_url">Server URL ghalat hai — https:// se shuru hona chahiye</string>
+    <string name="error_server">Server se jawab nahi aa raha — thori der baad dobara karein (%1$s)</string>
+    <string name="error_not_registered_server">Ye phone server par registered nahi hai — dobara register karein</string>
+
+    <!-- Check-in status (F-31) -->
+    <string name="check_status_ok">theek hai</string>
+    <string name="check_status_no_internet">nakaam — internet nahi tha</string>
+    <string name="check_status_server_slow">nakaam — server dair se jawab de raha tha</string>
+    <string name="check_status_server_error">nakaam — server ka masla tha</string>
+    <string name="check_status_not_registered">nakaam — server par register nahi hai</string>
+    <string name="check_status_unknown">nakaam — server ka jawab samajh nahi aaya (purani halat barkarar hai)</string>
+
+    <!-- Warning banner + battery (MainActivity) -->
+    <string name="warning_banner_text">Warning — qist late hai, grace period chal raha hai. Tafseel dekhein.</string>
+    <string name="warning_banner_button">Warning Dekhein</string>
+    <string name="battery_title">Battery setting</string>
+    <string name="battery_body">Is app ko battery optimisation se bahar rakhein, warna check-in dair se hoga aur payment ke baad phone dair se khule ga.</string>
+    <string name="battery_button">Battery Setting Theek Karein</string>
+    <string name="battery_open_failed">Setting nahi khuli — Setting &gt; Apps &gt; AMG Lock &gt; Battery mein ja kar "Unrestricted" karein</string>
+
     <!-- Lock screen -->
     <string name="locked_title">Ye phone LOCK hai</string>
     <string name="locked_reason">Aap ki qist waqt par ada nahi hui.</string>
@@ -32,12 +76,50 @@
     <string name="locked_amount">Baqi raqam</string>
     <string name="locked_due">Qist ki tareekh</string>
     <string name="locked_shop">Madad ke liye shop se rabta karein</string>
+    <string name="lock_overdue_amount">ki qist baqi hai</string>
+    <string name="lock_overdue_count">qistein late hain</string>
+    <string name="lock_days_overdue">din late</string>
+    <string name="lock_total_remaining">Kul baqi raqam</string>
+    <string name="lock_locked_since">se lock hai</string>
+    <string name="lock_next_check">Agla check</string>
+    <string name="lock_checking">Check ho raha hai…</string>
+    <string name="lock_check_ok">Check ho gaya — halat waisi hi hai</string>
+    <string name="lock_check_no_internet">Internet nahi hai — thori der baad dobara karein</string>
+    <string name="lock_check_server_slow">Server dair se jawab de raha hai — 1 minute baad dobara karein</string>
+    <string name="lock_check_server_error">Server se jawab nahi aa raha — dobara karein</string>
+    <string name="lock_check_hint">Payment kar di hai to "Abhi Check Karein" dabayein — warna phone 15 minute mein khud check kare ga.</string>
+    <string name="emergency_button">Emergency Call (1122)</string>
+    <string name="call_shop_button">Shop ko Call Karein</string>
+    <string name="call_failed">Call nahi ho saki — dobara koshish karein</string>
     <string name="offline_code_hint">Offline code likhein (shop se mila code)</string>
+    <string name="offline_code_hint2">Ye code shop se milta hai — shop ko call karein ya shop par jayein. Code sirf aik dafa chalta hai.</string>
     <string name="offline_unlock_button">Code Se Kholein</string>
     <string name="offline_code_wrong">Ghalat code — dobara likhein</string>
+    <string name="offline_code_blank">Pehle code likhein — khaali hai</string>
+    <string name="offline_code_none">Koi offline code jari nahi hua — shop se code lein</string>
     <string name="offline_code_used">Ye code pehle istemal ho chuka hai</string>
+    <string name="offline_unlock_done">Phone khul gaya</string>
+
+    <!-- Warning screen -->
     <string name="warning_title">Warning — Qist Late Hai</string>
     <string name="warning_body">Aap ki qist late hai. Grace period khatam hone par phone lock ho jaye ga. Abhi ada karein.</string>
+    <string name="warning_amount_due">Is qist ki raqam</string>
+    <string name="warning_days_left">din baqi hain</string>
+    <string name="warning_lock_date">Is tareekh ko phone lock ho jaye ga</string>
+    <string name="warning_pay_guidance">Qist ada karein — shop par ja kar ya shop ko call kar ke. Qist ada karte hi phone khud theek ho jaye ga.</string>
+    <string name="warning_dismiss">Samajh Gaya</string>
+
+    <!-- Completion screen -->
     <string name="completed_title">Mubarak! Phone Aap Ka Hai</string>
     <string name="completed_body">Tamam qistein ada ho gayi hain. Ye app khud uninstall ho jaye gi aur phone hamesha ke liye khul jaye ga.</string>
+    <string name="completed_note">Agar app uninstall na ho to shop se rabta karein — phone ab bilkul aap ka hai, is par koi lock nahi hai.</string>
+    <string name="completed_verify_owner">Device Owner hat gaya</string>
+    <string name="completed_verify_yes">Haan</string>
+    <string name="completed_verify_no">Nahi — dobara koshish karein</string>
+    <string name="completed_owner_still_active">Device Owner abhi hatna baqi hai — "Dobara Koshish Karein" dabayein. Agar phir bhi na hate to shop se rabta karein.</string>
+    <string name="completed_retrying">Dobara koshish ho rahi hai…</string>
+    <string name="completed_retry_owner">Dobara Koshish Karein</string>
+    <string name="completed_uninstall_button">App Uninstall Karein</string>
+    <string name="completed_uninstall_launched">Uninstall ka prompt khul gaya — "Uninstall" dabayein. Agar prompt band ho jaye to dobara is button ko dabayein.</string>
+    <string name="completed_uninstall_failed">Uninstall khud nahi khula — Setting &gt; Apps &gt; AMG Lock &gt; Uninstall karein, ya shop se madad lein.</string>
 </resources>

@@ -1,9 +1,12 @@
 package pk.amgsystems.lock
 
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.UserManager
 import android.util.Log
 
@@ -25,7 +28,9 @@ import android.util.Log
  *  - applyLock(): show LockActivity + start lock task mode (pinned).
  *  - applyUnlock(): stop lock task, close LockActivity, normal phone.
  *  - applyPermanentUnlock(): final payment. Clears the Device Owner
- *    role, removes all restrictions, then the app uninstalls itself.
+ *    role and all restrictions, then the COMPLETION screen (foreground)
+ *    verifies the removal and offers the uninstall — never a silent
+ *    background uninstall (A-M7 / F-32).
  *
  * HONEST LIMITS (Android rules, not app bugs — also in README):
  *  - Safe Mode: Android does NOT let any app block booting into Safe
@@ -69,12 +74,38 @@ class LockManager(private val context: Context) {
         dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
         dpm.addUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
         dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_TETHERING)
-        // Lock screen must be usable: keyguard features off, no screenshots.
-        dpm.setKeyguardDisabled(admin, true)
+        // A-M6: customer ka apna screen lock (PIN / pattern / fingerprint)
+        // band NAHI karte. LockActivity showWhenLocked / turnScreenOn se
+        // keyguard ke oopar dikhti hai, is liye keyguard band karne ki
+        // zaroorat nahi — aur band keyguard se emergency dialer bhi
+        // nahi khulta. Purani install par band hua keyguard dobara on
+        // kar dein (false = keyguard dobara chalu).
+        dpm.setKeyguardDisabled(admin, false)
         dpm.setScreenCaptureDisabled(admin, true)
-        // This app is the only lock-task package: Home/Recents cannot escape it.
-        dpm.setLockTaskPackages(admin, arrayOf(context.packageName))
+        // This app is the only lock-task package (+ dialer, taake lock
+        // screen se emergency / shop call ho sake — F-22).
+        refreshLockTaskPackages()
         Log.i(TAG, "Device Owner policies applied")
+    }
+
+    /**
+     * Lock-task allowlist: hamari app + phone ka dialer. Dialer ke
+     * baghair lock screen se koi call nahi ho sakti (lock task mein
+     * sirf allowlist wali apps khulti hain). Dialer ka package har
+     * company ka alag hota hai, is liye resolve kar ke nikaalte hain.
+     */
+    fun refreshLockTaskPackages() {
+        if (!isDeviceOwner()) return
+        val packages = mutableSetOf(context.packageName)
+        runCatching {
+            val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:1122"))
+            val resolved = context.packageManager.resolveActivity(
+                dialIntent, PackageManager.MATCH_DEFAULT_ONLY
+            )
+            resolved?.activityInfo?.packageName?.let { packages.add(it) }
+        }.onFailure { Log.w(TAG, "Dialer resolve nahi hua — lock-task mein sirf ye app", it) }
+        runCatching { dpm.setLockTaskPackages(admin, packages.toTypedArray()) }
+            .onFailure { Log.e(TAG, "setLockTaskPackages failed", it) }
     }
 
     /** Show the lock screen and pin the phone to it. */
@@ -112,14 +143,30 @@ class LockManager(private val context: Context) {
             .onSuccess { Log.i(TAG, "lockNow() fallback applied (pin failed)") }
     }
 
-    /** Normal unlock (payment received / offline code used). */
+    /**
+     * Normal unlock (payment received / offline code used).
+     * A-M4 (pin trap fix): stopLockTask() har unlock path par chalta
+     * hai — warna LockActivity band hone ke baad bhi task pinned rehta
+     * hai aur customer Setup screen mein phans jata hai. Yahan sirf
+     * tab chalta hai jab context aik Activity ho; LockActivity khud
+     * bhi apne dismiss path par stopLockTask() karti hai, aur
+     * MainActivity onResume par hifazati tor par dobara karti hai.
+     */
     fun applyUnlock() {
         store.lockState = LockState.ACTIVE
         if (isDeviceOwner()) {
             dpm.setStatusBarDisabled(admin, false)
         }
+        stopLockTaskIfPossible()
         // LockActivity (if open) finishes itself when it sees ACTIVE.
         Log.i(TAG, "Phone UNLOCKED")
+    }
+
+    /** Activity context mile to lock task rok dein (na ho to khamoshi se chhor dein). */
+    fun stopLockTaskIfPossible() {
+        val activity = context as? Activity ?: return
+        runCatching { activity.stopLockTask() }
+            .onFailure { Log.d(TAG, "stopLockTask() skipped/failed (shayad lock task on hi nahi tha)", it) }
     }
 
     /** Warning state: phone still usable, warning banner is shown. */
@@ -131,37 +178,70 @@ class LockManager(private val context: Context) {
     /**
      * Final payment: permanent unlock.
      * Order matters:
-     *  1. Remove every restriction + stop lock task.
-     *  2. Clear the Device Owner role (this is the point of no return).
-     *  3. Uninstall ourselves — the customer now owns the phone fully.
-     * If step 3 fails (e.g. no installer permission), the app stays
-     * installed but harmless: Device Owner is already gone, so the
-     * customer can uninstall it like any normal app.
+     *  1. Remove every restriction + clear the Device Owner role.
+     *  2. State COMPLETED rakhein — state tab tak NAHI mitate jab tak
+     *     uninstall waqai na ho jaye (A-M7: pehle state mit jati thi
+     *     aur aik bekaar app reh jati thi).
+     *  3. Completion screen + notification: uninstall sirf foreground
+     *     CompletionActivity se hota hai, aur us ki tasdeeq hoti hai.
+     *     Background se ACTION_DELETE Android 10+ par band hai.
      */
     fun applyPermanentUnlock() {
+        val cleared = clearDeviceOwnerAndRestrictions()
         store.lockState = LockState.COMPLETED
-        if (isDeviceOwner()) {
-            runCatching { dpm.setStatusBarDisabled(admin, false) }
-            runCatching { dpm.setUninstallBlocked(admin, context.packageName, false) }
-            runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET) }
-            runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER) }
-            runCatching { dpm.setLockTaskPackages(admin, emptyArray()) }
-            runCatching { dpm.clearDeviceOwnerApp(context.packageName) }
-            Log.i(TAG, "Device Owner role cleared — permanent unlock")
+        Log.i(TAG, "Permanent unlock — Device Owner cleared: $cleared")
+        // Completion screen kholne ki koshish (foreground se chalta hai;
+        // background worker se Android rok deta hai — notification fallback hai).
+        NotificationHelper.showCompletion(context)
+        runCatching {
+            val intent = Intent(context, CompletionActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        }.onFailure {
+            Log.w(TAG, "Could not launch CompletionActivity from background (notification is the fallback)", it)
         }
-        uninstallSelf()
     }
 
-    private fun uninstallSelf() {
+    /**
+     * Tamam pabandiyan hatayein + Device Owner role khatam karein.
+     * Returns true agar is ke baad app Device Owner NAHI rahi
+     * (ya pehle se hi nahi thi).
+     */
+    fun clearDeviceOwnerAndRestrictions(): Boolean {
+        if (!isDeviceOwner()) return true
+        runCatching { dpm.setStatusBarDisabled(admin, false) }
+        runCatching { dpm.setUninstallBlocked(admin, context.packageName, false) }
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_FACTORY_RESET) }
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER) }
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES) }
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_TETHERING) }
+        runCatching { dpm.setKeyguardDisabled(admin, false) }
+        runCatching { dpm.setScreenCaptureDisabled(admin, false) }
+        runCatching { dpm.setLockTaskPackages(admin, emptyArray()) }
+        runCatching { dpm.clearDeviceOwnerApp(context.packageName) }
+        val cleared = !isDeviceOwner()
+        Log.i(TAG, "Device Owner role cleared: $cleared")
+        return cleared
+    }
+
+    /**
+     * Khud ko uninstall karne ka system prompt kholein.
+     * Sirf foreground CompletionActivity se call karein.
+     * Returns true agar prompt waqai khul gaya, false agar Android
+     * ne rok diya (tab UI mein seedhi hidayat dikhayi jati hai).
+     * State yahan NAHI mitate — agar customer prompt band kar de to
+     * completion screen dobara khulne par wahi halat dikhe.
+     */
+    fun tryUninstallSelf(): Boolean {
         val intent = Intent(Intent.ACTION_DELETE).apply {
-            data = android.net.Uri.parse("package:${context.packageName}")
+            data = Uri.parse("package:${context.packageName}")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        runCatching { context.startActivity(intent) }
-        // Fallback: if the uninstall prompt never appears, at least
-        // wipe our stored state so nothing lock-related survives.
-        store.clearAll()
-        OfflineCodeStore(context).clear()
+        return runCatching { context.startActivity(intent) }
+            .onSuccess { Log.i(TAG, "Uninstall prompt launched") }
+            .onFailure { Log.e(TAG, "Uninstall prompt FAILED to launch", it) }
+            .isSuccess
     }
 
     companion object {

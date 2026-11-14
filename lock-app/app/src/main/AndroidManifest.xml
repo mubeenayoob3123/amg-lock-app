@@ -20,8 +20,19 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- Needed so the lock screen can dismiss the keyguard while locked. -->
-    <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+    <!-- Warning + completion notifications (Android 13+ runtime permission, maangi MainActivity mein jati hai). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Battery optimisation exemption (Doze defence, F-33 / A-M10). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Lock screen se dialer kholne ke liye (emergency / shop call, F-22):
+         Android 11+ par resolveActivity ke liye queries chahiye. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+    </queries>
 
     <application
         android:name=".LockApp"
@@ -74,6 +85,20 @@
             android:screenOrientation="portrait"
             android:showWhenLocked="true"
             android:turnScreenOn="true" />
+
+        <!-- Warning screen (F-19): qist late, grace chal raha hai. -->
+        <activity
+            android:name=".WarningActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <!-- Completion screen (F-32): aakhri qist ke baad. -->
+        <activity
+            android:name=".CompletionActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <!-- Re-apply the lock state after every reboot. -->
         <receiver

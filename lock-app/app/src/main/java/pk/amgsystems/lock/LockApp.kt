@@ -13,12 +13,17 @@ import java.util.concurrent.TimeUnit
  * On first launch after provisioning it schedules the periodic check-in:
  * every 15 minutes (the shortest interval WorkManager allows) the app
  * asks the AMG server "lock karna hai ya nahi?" and applies the answer.
- * A check-in is also forced every time MainActivity / LockActivity opens.
+ * Notification channels bhi yahin bante hain (warning + completion).
+ *
+ * Note: MainActivity kholne par bhi aik check-in hota hai (agar aakhri
+ * kamyab check-in ko 15 minute se zyada ho gaye hon) — taake payment
+ * ke baad customer ko 15 minute ka intezar na karna pare (F-14).
  */
 class LockApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        NotificationHelper.createChannels(this)
         scheduleCheckIn()
     }
 

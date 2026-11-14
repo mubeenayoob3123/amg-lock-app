@@ -10,7 +10,10 @@ import android.util.Log
  * customer can use the phone.
  *
  * If the cached state was LOCKED, the lock screen comes straight back.
- * Then a fresh check-in runs (on a background thread) in case a
+ * If it was WARNING, the warning notification comes back too
+ * (notifications reboot par khatam ho jati hain).
+ * Then a fresh check-in runs (on a background thread, goAsync ke
+ * saath taake poora hone se pehle mara na jaye — A-n4) in case a
  * payment arrived while the phone was off.
  */
 class BootReceiver : BroadcastReceiver() {
@@ -24,12 +27,29 @@ class BootReceiver : BroadcastReceiver() {
         if (!store.isRegistered || store.lockState == LockState.COMPLETED) return
 
         Log.i(TAG, "Boot — cached state is ${store.lockState}, re-applying")
-        if (store.lockState == LockState.LOCKED) {
-            LockManager(context).applyLock()
+        when (store.lockState) {
+            LockState.LOCKED -> LockManager(context).applyLock()
+            LockState.WARNING -> NotificationHelper.showWarning(context)
+            else -> Unit
         }
         // Fresh check-in in the background (payment may have arrived).
+        val pendingResult = goAsync()
         Thread {
-            ServerApi(context).checkIn()?.let { PolicyEngine.apply(context, it) }
+            try {
+                when (val outcome = ServerApi(context).checkIn()) {
+                    is ServerApi.CheckInOutcome.Success ->
+                        PolicyEngine.apply(context, outcome.result)
+                    is ServerApi.CheckInOutcome.ServerError ->
+                        PolicyEngine.recordFailure(
+                            context,
+                            PolicyEngine.CheckInStatus.serverError(outcome.error)
+                        )
+                    is ServerApi.CheckInOutcome.NetworkError ->
+                        PolicyEngine.recordFailure(context, PolicyEngine.statusFor(outcome.kind))
+                }
+            } finally {
+                pendingResult.finish()
+            }
         }.start()
     }
 

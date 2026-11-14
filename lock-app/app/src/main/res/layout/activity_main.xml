@@ -65,6 +65,85 @@
             android:textSize="16sp"
             android:textStyle="bold" />
 
+        <!-- 3.10: success state after registration (green check, account,
+             next due, last check-in). Hidden until registered. -->
+        <TextView
+            android:id="@+id/tvRegisteredSuccess"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/emerald"
+            android:padding="14dp"
+            android:text=""
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- F-19: warning banner — opens the full warning screen. -->
+        <LinearLayout
+            android:id="@+id/llWarningBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/amber"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/warning_banner_text"
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnViewWarning"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/warning_banner_button" />
+        </LinearLayout>
+
+        <!-- F-33 / A-M10: battery optimisation exemption card. -->
+        <LinearLayout
+            android:id="@+id/llBattery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/white"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/battery_title"
+                android:textColor="@color/text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/battery_body"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnBatteryExempt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/battery_button" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/tvDetails"
             android:layout_width="match_parent"
@@ -76,34 +155,95 @@
             android:textColor="@color/text"
             android:textSize="15sp" />
 
-        <EditText
-            android:id="@+id/etServerUrl"
+        <!-- 3.10: Setup card — pairing code FIRST, server URL second
+             (prefilled with the live server; no hardcoded android:text
+             any more — single source of truth is LockStateStore, A-n10).
+             Hidden after registration (F-12). -->
+        <LinearLayout
+            android:id="@+id/llSetup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <EditText
+                android:id="@+id/etPairingCode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:background="@color/white"
+                android:hint="@string/pairing_code_label"
+                android:inputType="textCapCharacters"
+                android:maxLength="8"
+                android:padding="14dp" />
+
+            <EditText
+                android:id="@+id/etServerUrl"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@color/white"
+                android:hint="@string/server_url_label"
+                android:inputType="textUri"
+                android:padding="14dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/server_url_note"
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnRegister"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="@color/emerald"
+                android:text="@string/register_button" />
+
+            <!-- Persistent plain-language error (F-11) — not just a toast. -->
+            <TextView
+                android:id="@+id/tvSetupError"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@color/white"
+                android:padding="14dp"
+                android:text=""
+                android:textColor="@color/red"
+                android:textSize="15sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 3.10: registered state — masked code, reset only via a
+             deliberate confirmed action. -->
+        <LinearLayout
+            android:id="@+id/llRegistered"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
             android:background="@color/white"
-            android:hint="@string/server_url_label"
-            android:inputType="textUri"
+            android:orientation="vertical"
             android:padding="14dp"
-            android:text="https://alarab.amgsystems.pk" />
+            android:visibility="gone">
 
-        <EditText
-            android:id="@+id/etPairingCode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:background="@color/white"
-            android:hint="@string/pairing_code_label"
-            android:inputType="textCapCharacters"
-            android:padding="14dp" />
+            <TextView
+                android:id="@+id/tvRegisteredInfo"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/text"
+                android:textSize="15sp" />
 
-        <Button
-            android:id="@+id/btnRegister"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:backgroundTint="@color/emerald"
-            android:text="@string/register_button" />
+            <Button
+                android:id="@+id/btnResetRegistration"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:backgroundTint="@color/red"
+                android:text="@string/reset_button" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnCheckNow"

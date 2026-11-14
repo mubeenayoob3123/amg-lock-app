@@ -2,7 +2,11 @@ package pk.amgsystems.lock
 
 import android.content.Context
 import android.util.Log
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 
 /**
@@ -20,9 +24,12 @@ import androidx.work.WorkerParameters
  * Why WorkManager and not a foreground service? WorkManager survives
  * reboots, respects Doze, and cannot be killed by swiping the app
  * away. A foreground service would drain battery and show a permanent
- * notification the customer could tap to kill. (A push/FCM trigger
- * can be added later so a payment unlocks the phone instantly instead
- * of within 15 minutes — see README "Baad mein".)
+ * notification the customer could tap to kill.
+ *
+ * FCM push (Wave 5.4): server jab unlock/completed ki push bhejta hai
+ * to AmgFirebaseMessagingService isi worker ko one-shot chalata hai
+ * (enqueueImmediate) — payment ke baad phone foran khul jata hai,
+ * 15 minute ka intezar nahi hota.
  */
 class CheckInWorker(
     context: Context,
@@ -64,5 +71,22 @@ class CheckInWorker(
     companion object {
         const val WORK_NAME = "amg-lock-checkin"
         private const val TAG = "CheckInWorker"
+
+        /**
+         * Foran aik dafa check-in (FCM push ya naye token ke baad).
+         * One-shot work hai — periodic 15-minute schedule ko nahi
+         * chheerta. doWork() ke andar hi unregistered/completed wale
+         * guard hain, is liye yahan se seedha enqueue karna mehfooz hai.
+         */
+        fun enqueueImmediate(context: Context) {
+            val request = OneTimeWorkRequestBuilder<CheckInWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueue(request)
+        }
     }
 }

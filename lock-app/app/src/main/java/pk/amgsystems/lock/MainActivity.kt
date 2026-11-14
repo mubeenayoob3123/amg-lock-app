@@ -16,6 +16,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import pk.amgsystems.lock.databinding.ActivityMainBinding
 
 /**
@@ -61,6 +63,41 @@ class MainActivity : AppCompatActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* koi zor nahi — na mile to warning screen phir bhi app kholne par dikhti hai */ }
 
+    /**
+     * QR pairing scan (A-M13 / Wave 5.6) — dashboard ka pairing QR
+     * camera se parhein. Kamyab scan Setup pre-fill karta hai (server
+     * URL + pairing code); Register phir bhi haath se dabana parta hai
+     * taake shop code dekh kar tasdeeq kar sake. Cancel par kuch nahi.
+     */
+    private val qrScanLauncher =
+        registerForActivityResult(ScanContract()) { result ->
+            val text = result.contents
+            if (text.isNullOrBlank()) {
+                // Scan cancel hua — koi ghalti nahi, khamoshi se wapas.
+                return@registerForActivityResult
+            }
+            val payload = QrProvisioning.parsePairingQr(text)
+            if (payload == null) {
+                showSetupError(getString(R.string.qr_invalid))
+                return@registerForActivityResult
+            }
+            if (payload.serverUrl.isNotBlank()) {
+                binding.etServerUrl.setText(payload.serverUrl)
+            }
+            binding.etPairingCode.setText(payload.pairingCode)
+            Toast.makeText(this, getString(R.string.qr_scanned_ok), Toast.LENGTH_LONG).show()
+        }
+
+    /** Camera permission — QR scan ke liye zaroori (Android 6+). */
+    private val cameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                launchQrScan()
+            } else {
+                Toast.makeText(this, getString(R.string.qr_camera_denied), Toast.LENGTH_LONG).show()
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -91,6 +128,7 @@ class MainActivity : AppCompatActivity() {
         binding.etPairingCode.setText(store.pairingCode)
 
         binding.btnRegister.setOnClickListener { register() }
+        binding.btnQrScan.setOnClickListener { startQrScan() }
         binding.btnCheckNow.setOnClickListener { checkNow(silent = false) }
         binding.btnViewWarning.setOnClickListener {
             startActivity(Intent(this, WarningActivity::class.java))
@@ -151,6 +189,30 @@ class MainActivity : AppCompatActivity() {
         }.onFailure {
             Toast.makeText(this, getString(R.string.battery_open_failed), Toast.LENGTH_LONG).show()
         }
+    }
+
+    /**
+     * QR pairing scan shuru karein (A-M13): pehle camera permission,
+     * phir ZXing scanner. Scan ka nateeja qrScanLauncher mein aata hai.
+     */
+    private fun startQrScan() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            launchQrScan()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun launchQrScan() {
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt(getString(R.string.qr_scan_prompt))
+            setBeepEnabled(true)
+            setOrientationLocked(true)
+        }
+        qrScanLauncher.launch(options)
     }
 
     private fun register() {

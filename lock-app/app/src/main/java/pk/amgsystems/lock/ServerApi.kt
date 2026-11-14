@@ -31,6 +31,8 @@ import java.net.UnknownHostException
  *                 "deviceId": "dev_..." }   // v2.1, optional — sirf tab jab
  *                 // pehle se stored ho; same-device dobara register ki
  *                 // ijazat isi se milti hai (PU-M8 re-register guard)
+ *                 // Wave 5.4, optional: "fcmToken": "..." — FCM on ho to
+ *                 // push token bhi bheja jata hai (na ho to field nahi bhejte).
  *     Response: { "ok": true, "deviceId": "dev_...", "accountId": "...",
  *                 "shopName": "Al Arab Electronic", "shopPhone": "03xx-xxxxxxx",
  *                 "resetPin": "4821" }   // v2.1, optional — reset sirf is PIN se (PU-M8)
@@ -41,6 +43,8 @@ import java.net.UnknownHostException
  *
  *   POST /api/device/checkin
  *     Request : { "deviceId": "dev_...", "pairingCode": "YD5NG6RK" }
+ *                 // Wave 5.4, optional: "fcmToken": "..." — token refresh
+ *                 // check-in ke saath server tak pahunchta hai.
  *     Response: { "ok": true,
  *                 "instruction": "stay_unlocked" | "warn" | "lock_now" | "permanent_unlock",
  *                 "dueDate": "2026-12-10", "remainingAmount": 48000,
@@ -95,6 +99,11 @@ class ServerApi(private val context: Context) {
                 // hota hai, tab ye field bheji hi nahi jati.
                 val storedDeviceId = store.deviceId
                 if (storedDeviceId.isNotBlank()) put("deviceId", storedDeviceId)
+                // Wave 5.4 (FCM): push token ho to register ke saath
+                // bhej dein — server isi par unlock wali push bhejta hai.
+                // FCM band ho to token khaali hota hai, field nahi bhejte.
+                val fcmToken = store.fcmToken
+                if (fcmToken.isNotBlank()) put("fcmToken", fcmToken)
             }
             val json = post(baseUrl(serverUrl), "/api/device/register", body, REGISTER_TIMEOUT_MS)
             if (json.optBoolean("ok", false)) {
@@ -162,6 +171,10 @@ class ServerApi(private val context: Context) {
             val body = JSONObject().apply {
                 put("deviceId", store.deviceId)
                 put("pairingCode", store.pairingCode)
+                // Wave 5.4 (FCM): token refresh check-in ke saath server
+                // tak pahunchta hai (FcmManager.onNewToken ke baad).
+                val fcmToken = store.fcmToken
+                if (fcmToken.isNotBlank()) put("fcmToken", fcmToken)
             }
             val json = post(baseUrl(store.serverUrl), "/api/device/checkin", body, CHECKIN_TIMEOUT_MS)
             if (!json.optBoolean("ok", false)) {

@@ -21,6 +21,9 @@ import android.content.SharedPreferences
  *  - nextDueDate / monthlyAmount — agli qist ki tareekh aur raqam
  *  - installmentNumber / installmentTotal — overdue qist ka number,
  *    masalan "Qist #3 of 6" (v2.1; -1 = server ne nahi bheja — PU-S9)
+ *  - fcmToken — Firebase push token (Wave 5.4); server ko register /
+ *    check-in par bheja jata hai taake payment par push aa sake.
+ *    "" = FCM band hai ya token abhi nahi mila.
  *  - offlineUnlockUntil — offline code wali 24 ghante ki window (D-M6)
  *  - lockedSinceAt — phone kab se lock hai (F-24)
  *  - lastCheckInAt / lastCheckInResult / lastCheckInStatus /
@@ -68,6 +71,16 @@ class LockStateStore(context: Context) {
     var resetPin: String
         get() = prefs.getString(KEY_RESET_PIN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_RESET_PIN, value.trim()).apply()
+
+    /**
+     * FCM push token (Wave 5.4 — FcmManager set karta hai). Server ko
+     * register / check-in par bheja jata hai; server unlock ya final
+     * payment par isi token par push bhejta hai. "" = FCM band hai ya
+     * token abhi nahi mila (tab 15 minute wala check-in hi chalta hai).
+     */
+    var fcmToken: String
+        get() = prefs.getString(KEY_FCM_TOKEN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_FCM_TOKEN, value.trim()).apply()
 
     var isRegistered: Boolean
         get() = prefs.getBoolean(KEY_REGISTERED, false)
@@ -182,6 +195,7 @@ class LockStateStore(context: Context) {
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_ACCOUNT_ID = "account_id"
         private const val KEY_RESET_PIN = "reset_pin"
+        private const val KEY_FCM_TOKEN = "fcm_token"
         private const val KEY_REGISTERED = "registered"
         /** Key for the lock-state preference (observed by LockActivity). */
         const val KEY_LOCK_STATE = "lock_state"

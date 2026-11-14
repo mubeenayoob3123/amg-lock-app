@@ -100,6 +100,18 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- FCM push (Wave 5.4): server "check-in karo" ka ishara bhejta
+             hai taake payment ke baad phone foran khule. Bina
+             google-services.json ke Firebase init nahi hota aur ye
+             service kabhi call nahi hoti. -->
+        <service
+            android:name=".AmgFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
         <!-- Re-apply the lock state after every reboot. -->
         <receiver
             android:name=".BootReceiver"

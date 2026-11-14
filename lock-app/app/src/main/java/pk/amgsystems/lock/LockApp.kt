@@ -25,6 +25,9 @@ class LockApp : Application() {
         super.onCreate()
         NotificationHelper.createChannels(this)
         scheduleCheckIn()
+        // FCM (Wave 5.4): push token taaza karein — FCM band ho to
+        // ye no-op hai (FcmManager khud check karta hai).
+        FcmManager.refreshTokenIfAvailable(this)
     }
 
     private fun scheduleCheckIn() {

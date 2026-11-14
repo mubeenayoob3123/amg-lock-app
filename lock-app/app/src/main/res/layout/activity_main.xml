@@ -194,11 +194,22 @@
                 android:textColor="@color/muted"
                 android:textSize="13sp" />
 
+            <!-- QR pairing scan (A-M13 / Wave 5.6): dashboard ka pairing
+                 QR scan karein — server URL + pairing code khud bhar
+                 jate hain, phir Register dabayein. -->
+            <Button
+                android:id="@+id/btnQrScan"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/qr_scan_button" />
+
             <Button
                 android:id="@+id/btnRegister"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="10dp"
                 android:backgroundTint="@color/emerald"
                 android:text="@string/register_button" />
 

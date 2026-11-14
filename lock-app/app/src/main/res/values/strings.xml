@@ -49,6 +49,13 @@
     <string name="reset_pin_blank">Pehle Reset PIN likhein</string>
     <string name="reset_pin_wrong">Reset PIN ghalat hai — reset nahi hua. Sahi PIN shop se lein.</string>
 
+    <!-- QR pairing scan (A-M13 / Wave 5.6) -->
+    <string name="qr_scan_button">QR Scan Karein (dashboard se)</string>
+    <string name="qr_scan_prompt">Dashboard ka pairing QR camera ke samne rakhein</string>
+    <string name="qr_scanned_ok">QR se code bhar diya gaya — ab Register dabayein</string>
+    <string name="qr_invalid">Ye QR AMG ka pairing QR nahi lagta — dashboard se pairing QR dobara scan karein</string>
+    <string name="qr_camera_denied">Camera ki ijazat ke baghair QR scan nahi ho sakta — Setting se camera on karein</string>
+
     <!-- Setup / check-in errors — saaf lafzon mein (F-11) -->
     <string name="error_code_blank">Pehle pairing code likhein (8 harf wala code jo dashboard se mila)</string>
     <string name="error_wrong_code">Code ghalat hai — dashboard se code dobara parh kar likhein</string>

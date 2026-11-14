@@ -69,9 +69,9 @@ lock-app/
         ├── AndroidManifest.xml
         ├── java/pk/amgsystems/lock/
         │   ├── LockApp.kt                ← app start, 15-min check-in schedule
-        │   ├── MainActivity.kt           ← setup + status screen (register, check)
+        │   ├── MainActivity.kt           ← setup + status screen (register, check, QR scan)
         │   ├── LockActivity.kt           ← Lock Screen 08 (offline code entry)
-        │   ├── AmgDeviceAdminReceiver.kt ← Device Owner receiver
+        │   ├── AmgDeviceAdminReceiver.kt ← Device Owner receiver (+ provisioning extras)
         │   ├── LockManager.kt            ← lock / unlock / permanent unlock, anti-tamper
         │   ├── PolicyEngine.kt           ← server ka jawab → lock action
         │   ├── ServerApi.kt              ← dashboard se baat (register / check-in)
@@ -79,6 +79,10 @@ lock-app/
         │   ├── BootReceiver.kt           ← reboot ke baad lock wapas lagana
         │   ├── LockStateStore.kt         ← phone ki halat save karna
         │   ├── OfflineCodeStore.kt       ← offline code ka hash + ek-dafa istemal
+        │   ├── SecurePrefs.kt            ← encrypted storage (PU-M7)
+        │   ├── FcmManager.kt             ← FCM push token (Wave 5.4)
+        │   ├── AmgFirebaseMessagingService.kt ← push milne par foran check-in
+        │   ├── QrProvisioning.kt         ← pairing QR parse + provisioning extras
         │   └── DeviceInfo.kt             ← phone ki pehchan (ANDROID_ID)
         └── res/                          ← layouts, colours (AMG navy/emerald), strings
 ```
@@ -137,15 +141,21 @@ Phir app kholein → Server URL + pairing code (dashboard se) → **Register**.
 ## Server se connection
 
 - Server URL app ki **Setup screen** mein likha jata hai (default:
-  `https://alarab.amgsystems.pk` — paid domain, baad mein).
-- **Free phase mein:** Hamraaz jo free hosting URL de, wahi likhein
-  (jaise `https://amgsystems.web.app`).
-- Endpoints (dashboard server flow se milte hain):
-  - `POST /api/device/register` — `{ pairingCode, imei, model, androidVersion }`
-  - `POST /api/device/checkin` — `{ deviceId, pairingCode }` →
+  `https://amg-device-api.onrender.com` — live test server, Render free tier).
+  Paid domain baad mein aaye ga, tab default badal jaye ga.
+- Endpoints (device server se — dashboard ki synced replica):
+  - `POST /api/device/register` — `{ pairingCode, imei, model, androidVersion,
+    deviceId?, fcmToken? }` → `deviceId`, `resetPin` (v2.1)
+  - `POST /api/device/checkin` — `{ deviceId, pairingCode, fcmToken? }` →
     `stay_unlocked | warn | lock_now | permanent_unlock`
-    (+ `dueDate`, `remainingAmount`, `graceDaysLeft`, `offlineUnlockCode` jab lock ho)
+    (+ `dueDate`, `remainingAmount`, `graceDaysLeft`, `offlineUnlockCode` jab lock ho,
+    `installmentNumber` / `installmentTotal` v2.1 mein)
   - `POST /api/device/offline-code-used` — code istemal hone ki khabar
+- **FCM push (Wave 5.4):** server unlock/completed par push bhejta hai
+  (token register/check-in mein jata hai) aur phone foran check-in karta
+  hai — payment ke baad 15 minute ka intezar nahi hota. Firebase setup
+  ke baghair push band rehta hai aur 15-minute check-in hi chalta hai
+  (setup: `hidden_files/fcm-setup-guide.md`, Mubeen ka step).
 - Internet na ho to phone **purani halat** par rehta hai — internet band
   karke unlock nahi ho sakta, aur payment ke baad galat lock bhi nahi lagta.
 
@@ -174,14 +184,18 @@ Poori list **`TESTING.md`** mein hai. Mukhtasar:
 - Auto lock / auto unlock / permanent unlock + self-uninstall
 - Anti-tamper rules (uninstall block, factory-reset block, lock-task pinning)
 - QR provisioning guide, build guide, test scenarios
+- Encrypted storage (PU-M7, v1.2.0) — SecurePrefs dekhein
+- Reset PIN + re-register guard + salted offline-code hash (v2.1, v1.2.1)
+- **FCM push client (Wave 5.4, v1.3.0)** — bina google-services.json ke bhi
+  compile hota hai (FCM tab band rehta hai); Firebase setup Mubeen ka step hai
+- **QR pairing scan (A-M13, v1.3.0)** — dashboard ka pairing QR camera se
+  scan karke Setup pre-fill; provisioning admin extras bhi parhe jate hain
 
 **Baqi hai (asal phone par):**
-- APK build karna (Android Studio — is machine par SDK nahi hai)
-- QR se test phone provision karna + dummy user se 8 test scenarios
-- Free hosting URL final karke Setup screen mein dalna
-- Real-customer se pehle: FCM push add karna taake payment par phone
-  foran khule (abhi 15 minute tak lag sakte hain). Encrypted storage
-  (PU-M7) v1.2.0 mein ho gaya hai — SecurePrefs dekhein.
+- APK build karna (GitHub Actions se debug APK, ya Android Studio)
+- QR se test phone provision karna + dummy user se 11 test scenarios
+- Firebase setup (FCM ke liye) + release APK host karna (QR provisioning
+  ke liye) — dono Mubeen ke steps hain, guides `hidden_files/` mein hain
 
 **Hadd (honest limits):** Safe Mode boot Android block nahi karne deta
 (lock normal boot par wapas aata hai); recovery se forced reset + FRP hi

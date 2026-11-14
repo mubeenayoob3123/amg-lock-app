@@ -82,6 +82,43 @@
 - **Umeed:** Phone **locked hi rahe** — internet band karke unlock nahi hota,
   kyunki phone purani halat par rehta hai.
 
+## Scenario 9 — QR pairing scan (Wave 5.6 / A-M13)
+
+- **Karein:** Dashboard se account ka **pairing QR** dikhayein → phone par
+  Setup mein **"QR Scan Karein"** dabayein → QR scan karein.
+- **Umeed:** Server URL + pairing code **khud bhar** jayein, aur
+  "QR se code bhar diya gaya — ab Register dabayein" dikhe.
+- **Karein:** Phir **Register** dabayein (scan khud register nahi karta).
+- **Umeed:** Register ho jaye, status ACTIVE.
+- **Ghalat QR:** Koi aur QR (masalan Wi-Fi wala) scan karein.
+- **Umeed:** "Ye QR AMG ka pairing QR nahi lagta" wali ghalti dikhe,
+  Setup kharab na ho.
+
+## Scenario 10 — FCM push: payment ke baad foran unlock (Wave 5.4)
+
+> Sirf tab jab Firebase setup ho chuka ho (google-services.json +
+> FCM_SERVER_KEY Render mein — dekhein `hidden_files/fcm-setup-guide.md`).
+> Setup ke baghair ye test NAHI chalega — tab Scenario 3 wala 15-minute
+> unlock hi umeed hai.
+
+- **Karein:** Phone locked ho → dashboard mein qist ada karein → phone ko
+  **haath na lagayein** (na "Abhi Check Karein", na app kholein).
+- **Umeed:** Phone **1 minute ke andar khud khul** jaye (push par foran
+  check-in hota hai).
+- **Check karein:** Dashboard Device Lock tab mein phone ka FCM token
+  registered nazar aaye (`fcmRegistered`); server `/health` mein
+  `fcmConfigured: true` ho.
+
+## Scenario 11 — QR provisioning extras (Wave 5.6)
+
+- **Karein:** Provisioning QR mein admin extras bundle rakhein
+  (`server_url` + `pairing_code` — dekhein `QR-PROVISIONING.md`) →
+  factory-reset phone provision karein.
+- **Umeed:** Provisioning ke baad MainActivity khule to Setup **pehle se
+  bhara** ho (server URL + pairing code) — sirf Register dabana pare.
+- **Baghair extras:** Extras ke baghair provision karein.
+- **Umeed:** Setup khaali khule (server URL default), haath se bharna pare.
+
 ---
 
 ## Test result likhne ka tareeqa

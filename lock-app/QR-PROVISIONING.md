@@ -15,6 +15,22 @@
    nahi hoti — debug signature har machine par alag hota hai).
    Release APK banane ka tareeqa README mein hai.
 
+## Do alag QR — milayein nahi
+
+1. **Provisioning QR** (ye file) — factory-reset phone ko Device Owner
+   banana. Android ka standard managed-provisioning format hai, system
+   khud parhta hai. Is mein APK download location hoti hai.
+2. **Pairing QR** (dashboard banata hai) — app pehle se installed ho to
+   Setup pre-fill karna. App ke andar "QR Scan Karein" se scan hota hai.
+   Is ka JSON:
+   ```json
+   {"serverUrl": "https://amg-device-api.onrender.com",
+    "pairingCode": "XXXXXXXX",
+    "apkUrl": "<shop settings se, default khaali>"}
+   ```
+   Scanner `serverUrl` + `pairingCode` parh kar Setup bhar deta hai;
+   `apkUrl` provisioning QR ke download location ke liye hota hai.
+
 ## 2. QR code kaise banayein
 
 QR code mein ye JSON hota hai (ye **managed provisioning** ka standard format hai):
@@ -31,10 +47,21 @@ QR code mein ye JSON hota hai (ye **managed provisioning** ka standard format ha
   "android.app.extra.PROVISIONING_WIFI_PASSWORD": "SHOP_WIFI_PASSWORD",
   "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA",
   "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": {
-    "server_url": "https://alarab.amgsystems.pk"
+    "server_url": "https://amg-device-api.onrender.com",
+    "pairing_code": "YD5NG6RK"
   }
 }
 ```
+
+**Download location = `apkUrl`:** dashboard shop settings mein jo hosted
+release APK ka link hai, wahi yahan aata hai (APK host karna Mubeen ka
+step hai — dekhein `hidden_files/qr-provisioning-setup-guide.md`).
+
+**Admin extras bundle (Wave 5.6):** `server_url` aur `pairing_code` app
+khud parhti hai (AmgDeviceAdminReceiver → QrProvisioning) aur Setup
+pre-fill kar deti hai — provisioning ke baad sirf Register dabana parta
+hai. Bundle na ho to Setup khaali khulta hai (server URL default),
+haath se bharna parta hai. Dono keys optional hain.
 
 ### Signature checksum kaise nikalein
 
@@ -76,8 +103,11 @@ print(base64.urlsafe_b64encode(h).decode().rstrip('='))
      ya phone ko `adb` se provision karein (neeche "Testing shortcut" dekhein).
 2. QR scan karein → phone APK download kare ga → **AMG Lock Device Owner ban jaye ga**.
 3. Provisioning mukammal hote hi MainActivity khul jaye gi.
-4. Dashboard se account ka **pairing code** lein (jaise `YD5NG6RK`),
-   Server URL check karein, **Register** dabayein.
+4. Agar provisioning QR mein admin extras thay (`server_url` /
+   `pairing_code`), to Setup **pehle se bhara** hoga — sirf
+   **Register** dabayein. Warna dashboard se account ka **pairing
+   code** lein (jaise `YD5NG6RK`) — ya **"QR Scan Karein"** se
+   dashboard ka pairing QR scan karein — phir **Register** dabayein.
 5. Status **ACTIVE** dikhe → phone customer ko dein.
 
 ## 4. Testing shortcut — bina factory reset ke (SIRF TEST KE LIYE)

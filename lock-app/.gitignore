@@ -1,0 +1,15 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+*.apk
+*.aab
+app/build/
+# Firebase client config (Wave 5.4) — Mubeen ke laptop par rehti hai,
+# public repo mein kabhi nahi jati. Is ke baghair bhi app compile hoti
+# hai (FCM tab band rehta hai).
+google-services.json
+app/google-services.json

@@ -3,6 +3,18 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// FCM (Wave 5.4): Google Services plugin SIRF tab lagta hai jab
+// google-services.json maujood ho. Firebase project abhi bana hi nahi,
+// is liye is file ke baghair bhi app compile honi chahiye — plugin bina
+// file ke build fail kar deta hai, is liye ye shart zaroori hai.
+// google-services.json app/ folder mein hoti hai (Mubeen ka step —
+// setup guide: hidden_files/fcm-setup-guide.md). Ye file .gitignore
+// mein hai, repo mein kabhi nahi jati.
+val fcmEnabled = file("google-services.json").exists()
+if (fcmEnabled) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "pk.amgsystems.lock"
     compileSdk = 34
@@ -11,8 +23,12 @@ android {
         applicationId = "pk.amgsystems.lock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.2.1"
+        versionCode = 5
+        versionName = "1.3.0"
+        // Build flag: FCM sirf tab on jab google-services.json build ke
+        // waqt maujood thi. FcmManager is ke saath runtime check bhi
+        // karta hai (FirebaseApp init hua ya nahi).
+        buildConfigField("boolean", "FCM_ENABLED", fcmEnabled.toString())
     }
 
     buildTypes {
@@ -39,6 +55,8 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // FCM_ENABLED flag ke liye (AGP 8 mein BuildConfig default off hai).
+        buildConfig = true
     }
 }
 
@@ -53,6 +71,15 @@ dependencies {
     // URL, reset PIN aur offline-code hash encrypted rehte hain
     // (SecurePrefs -> EncryptedSharedPreferences).
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    // FCM push (Wave 5.4): payment ke baad phone foran khule (15 minute
+    // ka intezar na ho). Library hamesha maujood hai; bina
+    // google-services.json ke Firebase init nahi hota aur FcmManager
+    // khud ko band rakhta hai — compile + run dono mehfooz hain.
+    implementation("com.google.firebase:firebase-messaging:24.0.0")
+    // QR pairing scan (A-M13 / Wave 5.6): dashboard ka pairing QR camera
+    // se parhein. ZXing offline chalta hai, Google Play Services ki
+    // zaroorat nahi — factory-reset phone par bhi kaam karta hai.
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     // No Retrofit / no extra networking library on purpose:
     // ServerApi uses HttpURLConnection + org.json (built into Android),
     // so the app has fewer dependencies to break on a shop phone.

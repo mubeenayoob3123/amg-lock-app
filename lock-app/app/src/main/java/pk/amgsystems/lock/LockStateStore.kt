@@ -6,8 +6,12 @@ import android.content.SharedPreferences
 /**
  * All persistent lock state, in one place.
  *
- * Stored here (SharedPreferences "amg_lock"):
+ * Stored here (encrypted SharedPreferences "amg_lock_enc" — PU-M7 /
+ * A-M11, Wave 5.8; pehle plain "amg_lock" thi, pehli launch par
+ * khud bakhud migrate ho jati hai, dekhein SecurePrefs):
  *  - serverUrl, pairingCode, deviceId, accountId (registration)
+ *  - resetPin — shop ka Reset PIN (server register jawab mein deta
+ *    hai, v2.1; reset sirf is PIN se hota hai — PU-M8 / R-S13)
  *  - lockState: ACTIVE / WARNING / LOCKED / COMPLETED
  *  - dueDate, remainingAmount, graceDaysLeft, shopName, shopPhone
  *  - overdueAmount / overdueDueDate / overdueCount — sirf OVERDUE qist
@@ -15,23 +19,20 @@ import android.content.SharedPreferences
  *    field bheja hi nahi (purana server) — tab UI purane fields
  *    (remainingAmount / dueDate) par wapas chala jata hai.
  *  - nextDueDate / monthlyAmount — agli qist ki tareekh aur raqam
+ *  - installmentNumber / installmentTotal — overdue qist ka number,
+ *    masalan "Qist #3 of 6" (v2.1; -1 = server ne nahi bheja — PU-S9)
  *  - offlineUnlockUntil — offline code wali 24 ghante ki window (D-M6)
  *  - lockedSinceAt — phone kab se lock hai (F-24)
  *  - lastCheckInAt / lastCheckInResult / lastCheckInStatus /
  *    lastCheckInAttemptAt — check-in ki halat (F-31: khamosh retry
  *    ki bajaye UI par nazar aaye ke aakhri check kaisa raha)
- *
- * NOTE (honest limitation): SharedPreferences is NOT encrypted.
- * For the test phase this is fine. Before real customers, switch
- * this file to EncryptedSharedPreferences (androidx.security) —
- * one-line change, listed as a TODO in README (Wave 5, A-M11).
  */
 enum class LockState { ACTIVE, WARNING, LOCKED, COMPLETED }
 
 class LockStateStore(context: Context) {
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        SecurePrefs.create(context, PREFS_NAME, PREFS_NAME_ENCRYPTED)
 
     /** Observe state changes (LockActivity uses this to dismiss itself). */
     fun addListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
@@ -57,6 +58,16 @@ class LockStateStore(context: Context) {
     var accountId: String
         get() = prefs.getString(KEY_ACCOUNT_ID, "") ?: ""
         set(value) = prefs.edit().putString(KEY_ACCOUNT_ID, value).apply()
+
+    /**
+     * Shop ka Reset PIN (v2.1 — server register jawab mein deta hai).
+     * "" = server ne PIN nahi diya (purana server / purani registration)
+     * — tab reset pehle jaisi tasdeeq se hota hai, jab tak dobara
+     * register par PIN na mil jaye (PU-M8 / R-S13).
+     */
+    var resetPin: String
+        get() = prefs.getString(KEY_RESET_PIN, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_RESET_PIN, value.trim()).apply()
 
     var isRegistered: Boolean
         get() = prefs.getBoolean(KEY_REGISTERED, false)
@@ -114,6 +125,18 @@ class LockStateStore(context: Context) {
         get() = prefs.getLong(KEY_MONTHLY_AMOUNT, 0L)
         set(value) = prefs.edit().putLong(KEY_MONTHLY_AMOUNT, value).apply()
 
+    // --- v2.1 (PU-S9): overdue qist ka number — "Qist #3 of 6" ---
+
+    /** Overdue qist ka number (masalan 3). -1 = server ne nahi bheja. */
+    var installmentNumber: Int
+        get() = prefs.getInt(KEY_INSTALLMENT_NUMBER, -1)
+        set(value) = prefs.edit().putInt(KEY_INSTALLMENT_NUMBER, value).apply()
+
+    /** Kul qiston ki tadaad (masalan 6). -1 = server ne nahi bheja. */
+    var installmentTotal: Int
+        get() = prefs.getInt(KEY_INSTALLMENT_TOTAL, -1)
+        set(value) = prefs.edit().putInt(KEY_INSTALLMENT_TOTAL, value).apply()
+
     /** Offline-code wali unlock window kab khatam hoti hai (ISO). "" = koi window nahi. */
     var offlineUnlockUntil: String
         get() = prefs.getString(KEY_OFFLINE_UNTIL, "") ?: ""
@@ -152,10 +175,13 @@ class LockStateStore(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "amg_lock"
+        /** Encrypted file — SecurePrefs purani plain file se yahan migrate karta hai (PU-M7). */
+        private const val PREFS_NAME_ENCRYPTED = "amg_lock_enc"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_PAIRING_CODE = "pairing_code"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_ACCOUNT_ID = "account_id"
+        private const val KEY_RESET_PIN = "reset_pin"
         private const val KEY_REGISTERED = "registered"
         /** Key for the lock-state preference (observed by LockActivity). */
         const val KEY_LOCK_STATE = "lock_state"
@@ -169,6 +195,8 @@ class LockStateStore(context: Context) {
         private const val KEY_OVERDUE_COUNT = "overdue_count"
         private const val KEY_NEXT_DUE_DATE = "next_due_date"
         private const val KEY_MONTHLY_AMOUNT = "monthly_amount"
+        private const val KEY_INSTALLMENT_NUMBER = "installment_number"
+        private const val KEY_INSTALLMENT_TOTAL = "installment_total"
         private const val KEY_OFFLINE_UNTIL = "offline_unlock_until"
         private const val KEY_LOCKED_SINCE = "locked_since_at"
         private const val KEY_LAST_CHECKIN = "last_checkin_at"

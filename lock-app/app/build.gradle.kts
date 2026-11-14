@@ -11,8 +11,8 @@ android {
         applicationId = "pk.amgsystems.lock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
     }
 
     buildTypes {
@@ -49,6 +49,10 @@ dependencies {
     // Background check-in: polls the AMG server for lock state.
     // WorkManager survives reboots and Doze; minimum periodic interval is 15 min.
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    // Encrypted storage (PU-M7 / A-M11): pairing code, deviceId, server
+    // URL, reset PIN aur offline-code hash encrypted rehte hain
+    // (SecurePrefs -> EncryptedSharedPreferences).
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     // No Retrofit / no extra networking library on purpose:
     // ServerApi uses HttpURLConnection + org.json (built into Android),
     // so the app has fewer dependencies to break on a shop phone.

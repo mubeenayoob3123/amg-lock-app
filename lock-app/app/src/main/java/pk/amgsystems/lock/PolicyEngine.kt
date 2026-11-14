@@ -49,6 +49,9 @@ object PolicyEngine {
         result.nextDueDate?.let { store.nextDueDate = it }
         result.monthlyAmount?.let { store.monthlyAmount = it }
         result.offlineUnlockUntil?.let { store.offlineUnlockUntil = it }
+        // v2.1 (PU-S9) — "Qist #3 of 6"; 0/-1 aaye to purani value rehne dein.
+        result.installmentNumber?.takeIf { it > 0 }?.let { store.installmentNumber = it }
+        result.installmentTotal?.takeIf { it > 0 }?.let { store.installmentTotal = it }
         store.lastCheckInAt = System.currentTimeMillis()
         store.lastCheckInAttemptAt = System.currentTimeMillis()
         store.lastCheckInResult = result.instruction
@@ -119,11 +122,22 @@ object PolicyEngine {
     fun retryPendingCodeReport(context: Context) {
         val offlineStore = OfflineCodeStore(context)
         val pending = offlineStore.pendingReportCode() ?: return
-        if (ServerApi(context).reportOfflineCodeUsed(pending)) {
-            offlineStore.clearPendingReport()
-            Log.i(TAG, "Pending offline-code-used report delivered")
-        } else {
-            Log.w(TAG, "Pending offline-code-used report still failing — will retry next check-in")
+        when (val report = ServerApi(context).reportOfflineCodeUsed(pending)) {
+            is ServerApi.CodeReportResult.Confirmed -> {
+                offlineStore.clearPendingReport()
+                Log.i(TAG, "Pending offline-code-used report delivered")
+            }
+            is ServerApi.CodeReportResult.Rejected -> {
+                // PU-N7 / R-N6: server ne MUSTAQIL tor par mana kar diya
+                // (masalan code pehle se jal chuka) — dobara bhejne ka
+                // faida nahi. Pending report saaf karein taake istemal
+                // shuda code ka plaintext prefs mein hamesha na rahe.
+                offlineStore.clearPendingReport()
+                Log.w(TAG, "Pending offline-code-used report permanently rejected (${report.error}) — cleared, will not retry")
+            }
+            is ServerApi.CodeReportResult.Transient -> {
+                Log.w(TAG, "Pending offline-code-used report still failing — will retry next check-in")
+            }
         }
     }
 

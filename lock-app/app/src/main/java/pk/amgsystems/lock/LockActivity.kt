@@ -4,6 +4,8 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -148,6 +150,12 @@ class LockActivity : AppCompatActivity() {
         if (overdueAmount > 0) {
             details.append("Rs $overdueAmount ${getString(R.string.lock_overdue_amount)}\n")
         }
+        // PU-S9 (v2.1): "Qist #3 of 6" — server na bheje to line nahi dikhti.
+        if (store.installmentNumber > 0 && store.installmentTotal > 0) {
+            details.append(
+                "${getString(R.string.lock_installment_number, store.installmentNumber, store.installmentTotal)}\n"
+            )
+        }
         if (store.overdueCount > 1) {
             details.append("${store.overdueCount} ${getString(R.string.lock_overdue_count)}\n")
         }
@@ -272,21 +280,43 @@ class LockActivity : AppCompatActivity() {
         // (works fully offline), then tell the server if we can.
         // A-M3: report nakaam ho to pending rakhein — agli check-in
         // par dobara bheja jaye ga (PolicyEngine.retryPendingCodeReport).
+        // PU-N7: mustaqil mana par pending saaf ho jata hai.
         offlineStore.setPendingReport(code)
         lockManager.applyUnlock()
+        // PU-S8 / R-S15: "Phone khul gaya" toast SIRF tasdeeq ke baad.
+        // Pehle toast foran dikhta tha, phir fresh check-in (purana
+        // code hone par) phone dobara lock kar deta tha — customer ko
+        // "khul gaya" dikh kar foran dobara lock nazar aata tha. Ab
+        // pehle report + fresh check-in hoti hai, phir halat dekh kar
+        // sahi paigham dikhta hai. Application context istemal hota
+        // hai — is doran ye screen band bhi ho jaye to toast aata hai.
+        val appContext = applicationContext
         Thread {
-            if (ServerApi(this).reportOfflineCodeUsed(code)) {
-                offlineStore.clearPendingReport()
+            val reportStore = OfflineCodeStore(appContext)
+            when (ServerApi(appContext).reportOfflineCodeUsed(code)) {
+                is ServerApi.CodeReportResult.Confirmed,
+                is ServerApi.CodeReportResult.Rejected -> reportStore.clearPendingReport()
+                is ServerApi.CodeReportResult.Transient -> Unit // pending rehta hai, agli check-in par retry
             }
             // Fresh check-in: server ab 24 ghante ki unlock window
             // deta hai (D-M6), is liye agli check-in par dobara lock
-            // nahi hota jab tak window chal rahi ho.
-            when (val outcome = ServerApi(this).checkIn()) {
-                is ServerApi.CheckInOutcome.Success -> PolicyEngine.apply(this, outcome.result)
+            // nahi hota jab tak window chal rahi ho. Agar code purana
+            // tha to server lock_now de ga aur phone dobara lock ho
+            // jaye ga — tab "khul gaya" nahi kehna.
+            when (val outcome = ServerApi(appContext).checkIn()) {
+                is ServerApi.CheckInOutcome.Success -> PolicyEngine.apply(appContext, outcome.result)
                 else -> Unit // offline: cached (unlocked) state rehti hai
             }
+            val stillLocked = LockStateStore(appContext).lockState == LockState.LOCKED
+            Handler(Looper.getMainLooper()).post {
+                val msg = if (stillLocked) {
+                    appContext.getString(R.string.offline_unlock_relocked)
+                } else {
+                    appContext.getString(R.string.offline_unlock_done)
+                }
+                Toast.makeText(appContext, msg, Toast.LENGTH_LONG).show()
+            }
         }.start()
-        Toast.makeText(this, getString(R.string.offline_unlock_done), Toast.LENGTH_SHORT).show()
         dismissLockScreen()
     }
 

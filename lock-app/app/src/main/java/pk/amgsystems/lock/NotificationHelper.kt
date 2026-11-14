@@ -51,9 +51,11 @@ object NotificationHelper {
     /** Warning notification dikhayein / taaza karein (persistent). */
     fun showWarning(context: Context) {
         val store = LockStateStore(context)
+        // PU-S1 / R-S14: overdueAmount (baqi hissa) pehle — partial
+        // payment ke baad poori qist nahi, sirf baqi hissa dikhana hai.
         val amount = when {
-            store.monthlyAmount > 0 -> store.monthlyAmount
             store.overdueAmount > 0 -> store.overdueAmount
+            store.monthlyAmount > 0 -> store.monthlyAmount
             else -> store.remainingAmount
         }
         val body = buildString {

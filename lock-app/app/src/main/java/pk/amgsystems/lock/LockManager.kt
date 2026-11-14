@@ -20,8 +20,10 @@ import android.util.Log
  *    re-applied on every MainActivity launch (the adb
  *    `set-device-owner` test path never fires the provisioning
  *    callback, so without this the policies would never run there).
- *      * This app becomes the launcher/home (customer cannot leave it
- *        by pressing Home while locked — lock task mode handles that).
+ *      * While locked, Home / Recents cannot escape: lock task mode
+ *        pins the phone to LockActivity. (The app is NOT set as the
+ *        default launcher — no addPersistentPreferredActivity; the
+ *        pin is what holds the lock, not a launcher role.)
  *      * Uninstall blocked, factory reset blocked (Settings + recovery
  *        entry point), status bar disabled while locked, screen
  *        capture disabled, adding users / unknown sources blocked.

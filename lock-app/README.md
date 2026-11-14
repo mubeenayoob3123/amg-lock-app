@@ -179,9 +179,9 @@ Poori list **`TESTING.md`** mein hai. Mukhtasar:
 - APK build karna (Android Studio — is machine par SDK nahi hai)
 - QR se test phone provision karna + dummy user se 8 test scenarios
 - Free hosting URL final karke Setup screen mein dalna
-- Real-customer se pehle: `LockStateStore` ko EncryptedSharedPreferences
-  par badalna, aur FCM push add karna taake payment par phone foran khule
-  (abhi 15 minute tak lag sakte hain)
+- Real-customer se pehle: FCM push add karna taake payment par phone
+  foran khule (abhi 15 minute tak lag sakte hain). Encrypted storage
+  (PU-M7) v1.2.0 mein ho gaya hai — SecurePrefs dekhein.
 
 **Hadd (honest limits):** Safe Mode boot Android block nahi karne deta
 (lock normal boot par wapas aata hai); recovery se forced reset + FRP hi

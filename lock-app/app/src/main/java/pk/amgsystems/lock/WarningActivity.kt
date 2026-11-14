@@ -67,11 +67,13 @@ class WarningActivity : AppCompatActivity() {
     private fun refreshUi() {
         binding.tvWarnTitle.text = getString(R.string.warning_title)
 
-        // Is qist ki raqam: monthlyAmount (agli qist) pehle, phir
-        // overdueAmount, aakhir mein kul baqi raqam (fallback).
+        // Is qist ki BAQI raqam (PU-S1 / R-S14): overdueAmount (na ada
+        // shuda hissa) pehle — partial payment ke baad poori qist nahi,
+        // sirf baqi hissa dikhana hai. Phir monthlyAmount, aakhir mein
+        // kul baqi raqam (fallback).
         val amount = when {
-            store.monthlyAmount > 0 -> store.monthlyAmount
             store.overdueAmount > 0 -> store.overdueAmount
+            store.monthlyAmount > 0 -> store.monthlyAmount
             else -> store.remainingAmount
         }
         val dueDate = store.overdueDueDate.ifBlank { store.nextDueDate.ifBlank { store.dueDate } }

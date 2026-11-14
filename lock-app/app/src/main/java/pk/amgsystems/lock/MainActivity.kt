@@ -8,7 +8,9 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.text.InputType
 import android.view.View
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
@@ -44,7 +46,7 @@ import pk.amgsystems.lock.databinding.ActivityMainBinding
  * Setup lock (F-12 / A-M8, 3.10): registration ke baad Setup fields
  * band ho jate hain — customer server URL ya code badal nahi sakta.
  * Dobara register sirf "Dobara Register Karein (Reset)" se hota hai,
- * jo aik jaan boojh kar ki jane wali tasdeeq maangta hai.
+ * jo shop ka Reset PIN maangta hai (PU-M8 / R-S13).
  */
 class MainActivity : AppCompatActivity() {
 
@@ -307,12 +309,43 @@ class MainActivity : AppCompatActivity() {
         checkNow(silent = true)
     }
 
-    /** Dobara register — jaan boojh kar tasdeeq ke baad (3.10). */
+    /**
+     * Dobara register — shop ke Reset PIN ke baad (PU-M8 / R-S13).
+     * PIN server register jawab mein deta hai (v2.1) aur encrypted
+     * store mein rehta hai. PIN ke baghair koi phone utha kar
+     * registration wipe karke dobara register nahi kar sakta.
+     * Purani registration jis mein PIN stored nahi (server ne abhi
+     * PIN nahi diya tha) — wahan pehle jaisi tasdeeq hoti hai, aur
+     * dobara register par naya server PIN de de ga.
+     */
     private fun confirmResetRegistration() {
+        val pin = store.resetPin
+        if (pin.isBlank()) {
+            AlertDialog.Builder(this)
+                .setTitle(getString(R.string.reset_title))
+                .setMessage(getString(R.string.reset_message))
+                .setPositiveButton(getString(R.string.reset_confirm)) { _, _ -> resetRegistration() }
+                .setNegativeButton(getString(R.string.reset_cancel), null)
+                .show()
+            return
+        }
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            hint = getString(R.string.reset_pin_hint)
+            setPadding(48, 32, 48, 16)
+        }
         AlertDialog.Builder(this)
-            .setTitle(getString(R.string.reset_title))
-            .setMessage(getString(R.string.reset_message))
-            .setPositiveButton(getString(R.string.reset_confirm)) { _, _ -> resetRegistration() }
+            .setTitle(getString(R.string.reset_pin_title))
+            .setMessage(getString(R.string.reset_pin_message))
+            .setView(input)
+            .setPositiveButton(getString(R.string.reset_confirm)) { _, _ ->
+                val typed = input.text.toString().trim()
+                when {
+                    typed.isBlank() -> Toast.makeText(this, getString(R.string.reset_pin_blank), Toast.LENGTH_LONG).show()
+                    typed == pin -> resetRegistration()
+                    else -> Toast.makeText(this, getString(R.string.reset_pin_wrong), Toast.LENGTH_LONG).show()
+                }
+            }
             .setNegativeButton(getString(R.string.reset_cancel), null)
             .show()
     }
@@ -405,8 +438,9 @@ class MainActivity : AppCompatActivity() {
             details.append("${getString(R.string.shop_label)}: ${store.shopName}")
             if (store.shopPhone.isNotBlank()) details.append(" (${store.shopPhone})")
             // Offline-code window (D-M6) — agar active ho to dikhayein.
+            // PU-N2 / R-N8: raw ISO nahi, aadmi ke parhne jaisa waqt.
             if (store.offlineUnlockUntil.isNotBlank()) {
-                details.append("\n${getString(R.string.offline_window_label)}: ${store.offlineUnlockUntil}")
+                details.append("\n${getString(R.string.offline_window_label)}: ${DateHelper.formatIsoDateTime(store.offlineUnlockUntil)}")
             }
             // F-31: aakhri check-in ki halat saaf lafzon mein.
             val statusLine = checkInStatusText()

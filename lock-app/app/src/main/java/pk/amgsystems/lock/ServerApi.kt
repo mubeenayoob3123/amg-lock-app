@@ -14,11 +14,14 @@ import java.net.URL
 import java.net.UnknownHostException
 
 /**
- * Client for the AMG web dashboard server flow.
+ * Client for the AMG device API (Render bridge: amg-device-api).
  *
- * The dashboard (amg-dashboard artifact) already implements this API
- * on the server side. If the server changes a field name, change it
- * HERE only — the rest of the app talks to these data classes.
+ * The app talks to the Render device server, which is a synced
+ * replica of the dashboard's device state — the dashboard pushes
+ * account / lock / code changes to it, and the phone reads live
+ * state back from it (unification, v21). If the server changes a
+ * field name, change it HERE only — the rest of the app talks to
+ * these data classes.
  *
  * Endpoints (all POST, JSON, relative to the server URL set in Setup):
  *
@@ -26,7 +29,8 @@ import java.net.UnknownHostException
  *     Request : { "pairingCode": "YD5NG6RK", "imei": "...", "model": "Samsung A54",
  *                 "androidVersion": "14" }
  *     Response: { "ok": true, "deviceId": "dev_...", "accountId": "...",
- *                 "shopName": "Al Arab Electronic", "shopPhone": "03xx-xxxxxxx" }
+ *                 "shopName": "Al Arab Electronic", "shopPhone": "03xx-xxxxxxx",
+ *                 "resetPin": "4821" }   // v2.1, optional — reset sirf is PIN se (PU-M8)
  *     Wrong code -> { "ok": false, "error": "invalid_pairing_code" }
  *
  *   POST /api/device/checkin
@@ -40,6 +44,8 @@ import java.net.UnknownHostException
  *                 "overdueAmount": 10000, "overdueDueDate": "2026-11-10",
  *                 "overdueCount": 1, "nextDueDate": "2026-12-10",
  *                 "monthlyAmount": 10000, "offlineUnlockUntil": "2026-11-15T..."
+ *                 // v2.1 (optional — PU-S9 "Qist #3 of 6"):
+ *                 "installmentNumber": 3, "installmentTotal": 6
  *               }
  *     The server applies the policy itself: grace (3/5/7 days) expired
  *     -> lock_now; a payment covering the overdue installment -> the
@@ -93,6 +99,12 @@ class ServerApi(private val context: Context) {
                 store.isRegistered = true
                 store.shopName = json.optString("shopName", store.shopName)
                 store.shopPhone = json.optString("shopPhone", store.shopPhone)
+                // PU-M8 (v2.1): Reset PIN — sirf tab likhein jab server
+                // ne bheja ho; purana server ye field nahi bhejta, tab
+                // pehle se stored PIN barkarar rehta hai.
+                if (json.has("resetPin")) {
+                    store.resetPin = json.optString("resetPin", "")
+                }
                 RegisterResult.Success(deviceId, store.accountId)
             } else {
                 val error = json.optString("error", "register_failed")
@@ -140,7 +152,10 @@ class ServerApi(private val context: Context) {
                     overdueCount = if (json.has("overdueCount")) json.optInt("overdueCount", 0) else null,
                     nextDueDate = if (json.has("nextDueDate")) json.optString("nextDueDate", "") else null,
                     monthlyAmount = if (json.has("monthlyAmount")) json.optLong("monthlyAmount", 0L) else null,
-                    offlineUnlockUntil = if (json.has("offlineUnlockUntil")) json.optString("offlineUnlockUntil", "") else null
+                    offlineUnlockUntil = if (json.has("offlineUnlockUntil")) json.optString("offlineUnlockUntil", "") else null,
+                    // v2.1 (PU-S9) — optional, purana server nahi bhejta.
+                    installmentNumber = if (json.has("installmentNumber")) json.optInt("installmentNumber", 0) else null,
+                    installmentTotal = if (json.has("installmentTotal")) json.optInt("installmentTotal", 0) else null
                 )
             )
         } catch (e: Exception) {
@@ -151,20 +166,35 @@ class ServerApi(private val context: Context) {
 
     /**
      * Tell the server an offline code was used.
-     * Returns true only if the server confirmed it — caller keeps a
-     * pending retry (A-M3) when this returns false.
+     * Teen nataij (PU-N7 / R-N6): Confirmed (server ne tasdeeq kar
+     * di) / Rejected (server ne MUSTAQIL tor par mana kar diya —
+     * dobara bhejne ka faida nahi, pending report saaf kar dein) /
+     * Transient (internet / timeout / aarzi masla — baad mein dobara
+     * bhejein). Pehle ye sirf Boolean deta tha, is liye mustaqil
+     * mana bhi hamesha retry hota rehta tha.
      */
-    fun reportOfflineCodeUsed(code: String): Boolean {
+    fun reportOfflineCodeUsed(code: String): CodeReportResult {
         return try {
             val body = JSONObject().apply {
                 put("deviceId", store.deviceId)
                 put("code", code.trim().uppercase())
             }
             val json = post(baseUrl(store.serverUrl), "/api/device/offline-code-used", body, CHECKIN_TIMEOUT_MS)
-            json.optBoolean("ok", false)
+            if (json.optBoolean("ok", false)) {
+                CodeReportResult.Confirmed
+            } else {
+                val error = json.optString("error", "")
+                if (error in PERMANENT_REPORT_ERRORS) CodeReportResult.Rejected(error)
+                else CodeReportResult.Transient
+            }
+        } catch (e: HttpStatusException) {
+            // 4xx/5xx — body mein server ka error ho sakta hai.
+            val error = runCatching { JSONObject(e.body).optString("error", "") }.getOrDefault("")
+            if (error in PERMANENT_REPORT_ERRORS) CodeReportResult.Rejected(error)
+            else CodeReportResult.Transient
         } catch (e: Exception) {
             Log.w(TAG, "report offline-code-used failed (pending retry rakha jaye ga)", e)
-            false
+            CodeReportResult.Transient
         }
     }
 
@@ -216,7 +246,17 @@ class ServerApi(private val context: Context) {
     }
 
     /** HTTP ghair-2xx jawab — is mein server ka error chhupa hota hai. */
-    class HttpStatusException(val status: Int, body: String) : RuntimeException("HTTP $status: $body")
+    class HttpStatusException(val status: Int, val body: String) : RuntimeException("HTTP $status: $body")
+
+    /** "Code istemal hua" report ka nateeja (PU-N7 — tasdeeq / mustaqil mana / aarzi masla). */
+    sealed interface CodeReportResult {
+        /** Server ne tasdeeq kar di — report poori ho gayi. */
+        data object Confirmed : CodeReportResult
+        /** Server ne mustaqil tor par mana kar diya — dobara bhejne ka faida nahi. */
+        data class Rejected(val error: String) : CodeReportResult
+        /** Internet / timeout / aarzi masla — baad mein dobara bhejein. */
+        data object Transient : CodeReportResult
+    }
 
     /** Saaf error qisam — UI is se seedha sadha paigham dikhata hai (F-11). */
     enum class ErrorKind {
@@ -268,12 +308,29 @@ class ServerApi(private val context: Context) {
         /** Agli qist ki raqam (mahina-waar qist). */
         val monthlyAmount: Long?,
         /** Offline-code wali unlock window kab khatam hoti hai (ISO). */
-        val offlineUnlockUntil: String?
+        val offlineUnlockUntil: String?,
+        // --- v2.1 optional fields (null = purana server, UI line chhupa de) ---
+        /** Overdue qist ka number (masalan 3) — "Qist #3 of 6" (PU-S9). */
+        val installmentNumber: Int?,
+        /** Kul qiston ki tadaad (masalan 6). */
+        val installmentTotal: Int?
     )
 
     companion object {
         private const val TAG = "ServerApi"
         private const val REGISTER_TIMEOUT_MS = 60_000
         private const val CHECKIN_TIMEOUT_MS = 60_000
+        /**
+         * "Code istemal hua" report par ye server errors MUSTAQIL hain —
+         * in par dobara bhejna kabhi kamyab nahi ho ga (PU-N7):
+         * invalid_unlock_code (code pehle se jal chuka / account paid),
+         * device_not_registered (deviceId mar chuka — dobara register
+         * zaroori), account_not_found (account hi nahi raha).
+         */
+        private val PERMANENT_REPORT_ERRORS = setOf(
+            "invalid_unlock_code",
+            "device_not_registered",
+            "account_not_found"
+        )
     }
 }

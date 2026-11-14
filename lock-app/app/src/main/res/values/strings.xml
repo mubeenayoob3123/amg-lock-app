@@ -43,6 +43,11 @@
     <string name="reset_confirm">Haan, reset karein</string>
     <string name="reset_cancel">Nahi</string>
     <string name="reset_done">Reset ho gaya — pairing code dobara likhein</string>
+    <string name="reset_pin_title">Reset PIN likhein</string>
+    <string name="reset_pin_message">Registration reset karne ke liye shop ka Reset PIN likhein. Ye PIN dashboard mein shop ke paas hota hai — customer ke paas nahi.</string>
+    <string name="reset_pin_hint">Reset PIN</string>
+    <string name="reset_pin_blank">Pehle Reset PIN likhein</string>
+    <string name="reset_pin_wrong">Reset PIN ghalat hai — reset nahi hua. Sahi PIN shop se lein.</string>
 
     <!-- Setup / check-in errors — saaf lafzon mein (F-11) -->
     <string name="error_code_blank">Pehle pairing code likhein (8 harf wala code jo dashboard se mila)</string>
@@ -77,6 +82,7 @@
     <string name="locked_due">Qist ki tareekh</string>
     <string name="locked_shop">Madad ke liye shop se rabta karein</string>
     <string name="lock_overdue_amount">ki qist baqi hai</string>
+    <string name="lock_installment_number">Qist #%1$d of %2$d</string>
     <string name="lock_overdue_count">qistein late hain</string>
     <string name="lock_days_overdue">din late</string>
     <string name="lock_total_remaining">Kul baqi raqam</string>
@@ -99,6 +105,7 @@
     <string name="offline_code_none">Koi offline code jari nahi hua — shop se code lein</string>
     <string name="offline_code_used">Ye code pehle istemal ho chuka hai</string>
     <string name="offline_unlock_done">Phone khul gaya</string>
+    <string name="offline_unlock_relocked">Code purana tha — phone dobara lock ho gaya. Shop se naya code lein.</string>
 
     <!-- Warning screen -->
     <string name="warning_title">Warning — Qist Late Hai</string>

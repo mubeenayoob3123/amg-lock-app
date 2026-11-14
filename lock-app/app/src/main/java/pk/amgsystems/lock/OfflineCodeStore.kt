@@ -124,7 +124,22 @@ class OfflineCodeStore(context: Context) {
     fun pendingReportCode(): String? = prefs.getString(KEY_PENDING_REPORT, null)
 
     fun clearPendingReport() {
-        prefs.edit().remove(KEY_PENDING_REPORT).apply()
+        prefs.edit().remove(KEY_PENDING_REPORT).remove(KEY_PENDING_RETRY_AFTER).apply()
+    }
+
+    /**
+     * Pending report dobara kab bhejni hai (millis). 0 = koi backoff
+     * nahi. Server 429 (too_many_attempts) ke baad 1 ghante ke liye
+     * block karta hai — us doran har 15 minute ki check-in par
+     * dobara bhejna bekaar hai (v2.1 / PU-S10).
+     */
+    var pendingReportRetryAfterAt: Long
+        get() = prefs.getLong(KEY_PENDING_RETRY_AFTER, 0L)
+        set(value) = prefs.edit().putLong(KEY_PENDING_RETRY_AFTER, value).apply()
+
+    /** 429 ke baad backoff lagayein — 1 ghanta (server ke block jitna). */
+    fun noteReportRateLimited() {
+        pendingReportRetryAfterAt = System.currentTimeMillis() + RATE_LIMIT_BACKOFF_MS
     }
 
     // --- Salted hash (PU-M8 / A-n8) ---
@@ -164,6 +179,9 @@ class OfflineCodeStore(context: Context) {
         private const val KEY_HASH = "offline_code_hash"
         private const val KEY_USED_HASHES = "offline_code_used_hashes"
         private const val KEY_PENDING_REPORT = "offline_code_pending_report"
+        private const val KEY_PENDING_RETRY_AFTER = "offline_code_pending_retry_after"
         private const val KEY_SALT = "offline_code_salt"
+        /** 429 (too_many_attempts) ke baad retry se pehle ka waqfa — server 1 ghante ke liye block karta hai. */
+        private const val RATE_LIMIT_BACKOFF_MS = 60L * 60L * 1000L
     }
 }

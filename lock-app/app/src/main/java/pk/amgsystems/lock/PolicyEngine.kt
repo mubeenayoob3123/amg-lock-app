@@ -122,6 +122,15 @@ object PolicyEngine {
     fun retryPendingCodeReport(context: Context) {
         val offlineStore = OfflineCodeStore(context)
         val pending = offlineStore.pendingReportCode() ?: return
+        // v2.1 (PU-S10): 429 ke baad backoff — server 1 ghante ke liye
+        // block karta hai, us doran dobara bhejna bekaar hai. Retry
+        // waise bhi sirf kamyab check-in par hoti hai (15 minute ka
+        // WorkManager tick), is liye koi tight loop nahi hai.
+        val retryAfter = offlineStore.pendingReportRetryAfterAt
+        if (retryAfter > 0L && System.currentTimeMillis() < retryAfter) {
+            Log.d(TAG, "Pending offline-code-used report in rate-limit backoff — skipping this check-in")
+            return
+        }
         when (val report = ServerApi(context).reportOfflineCodeUsed(pending)) {
             is ServerApi.CodeReportResult.Confirmed -> {
                 offlineStore.clearPendingReport()
@@ -134,6 +143,14 @@ object PolicyEngine {
                 // shuda code ka plaintext prefs mein hamesha na rahe.
                 offlineStore.clearPendingReport()
                 Log.w(TAG, "Pending offline-code-used report permanently rejected (${report.error}) — cleared, will not retry")
+            }
+            is ServerApi.CodeReportResult.RateLimited -> {
+                // 429 TRANSIENT hai — report abhi bhi owed hai, pending
+                // SAAL NAHI karna (PU-N7 wali safai sirf mustaqil mana
+                // par hoti hai). 1 ghante ka backoff lagayein taake
+                // server ko baar baar na chherein.
+                offlineStore.noteReportRateLimited()
+                Log.w(TAG, "Pending offline-code-used report rate-limited (429) — keeping pending, backoff 1 hour")
             }
             is ServerApi.CodeReportResult.Transient -> {
                 Log.w(TAG, "Pending offline-code-used report still failing — will retry next check-in")

@@ -57,6 +57,8 @@
     <string name="error_bad_url">Server URL ghalat hai — https:// se shuru hona chahiye</string>
     <string name="error_server">Server se jawab nahi aa raha — thori der baad dobara karein (%1$s)</string>
     <string name="error_not_registered_server">Ye phone server par registered nahi hai — dobara register karein</string>
+    <string name="error_reregister_blocked">Is phone ko dobara register karne ke liye dukaan se naya pairing code lein</string>
+    <string name="error_too_many_attempts">Bahut zyada koshishen ho gayi hain — 1 ghante baad dobara koshish karein</string>
 
     <!-- Check-in status (F-31) -->
     <string name="check_status_ok">theek hai</string>
@@ -106,6 +108,7 @@
     <string name="offline_code_used">Ye code pehle istemal ho chuka hai</string>
     <string name="offline_unlock_done">Phone khul gaya</string>
     <string name="offline_unlock_relocked">Code purana tha — phone dobara lock ho gaya. Shop se naya code lein.</string>
+    <string name="offline_report_rate_limited">Server ko code ki khabar 1 ghante baad dobara bheji jaye gi</string>
 
     <!-- Warning screen -->
     <string name="warning_title">Warning — Qist Late Hai</string>

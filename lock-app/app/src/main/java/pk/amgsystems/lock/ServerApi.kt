@@ -27,11 +27,17 @@ import java.net.UnknownHostException
  *
  *   POST /api/device/register
  *     Request : { "pairingCode": "YD5NG6RK", "imei": "...", "model": "Samsung A54",
- *                 "androidVersion": "14" }
+ *                 "androidVersion": "14",
+ *                 "deviceId": "dev_..." }   // v2.1, optional — sirf tab jab
+ *                 // pehle se stored ho; same-device dobara register ki
+ *                 // ijazat isi se milti hai (PU-M8 re-register guard)
  *     Response: { "ok": true, "deviceId": "dev_...", "accountId": "...",
  *                 "shopName": "Al Arab Electronic", "shopPhone": "03xx-xxxxxxx",
  *                 "resetPin": "4821" }   // v2.1, optional — reset sirf is PIN se (PU-M8)
  *     Wrong code -> { "ok": false, "error": "invalid_pairing_code" }
+ *     v2.1 naye statuses: HTTP 403 reregister_blocked (dobara register
+ *     ke liye purana device ya dukaan se naya pairing code chahiye)
+ *     aur HTTP 429 too_many_attempts (1 ghante ka block).
  *
  *   POST /api/device/checkin
  *     Request : { "deviceId": "dev_...", "pairingCode": "YD5NG6RK" }
@@ -82,6 +88,13 @@ class ServerApi(private val context: Context) {
                 put("imei", DeviceInfo.imei(context))
                 put("model", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("androidVersion", Build.VERSION.RELEASE)
+                // v2.1 (PU-M8): stored deviceId bhej dein jab ho — server
+                // ka re-register guard same-device dobara register sirf
+                // tab allow karta hai jab presented deviceId stored se
+                // match kare. Pehli dafa register par deviceId khaali
+                // hota hai, tab ye field bheji hi nahi jati.
+                val storedDeviceId = store.deviceId
+                if (storedDeviceId.isNotBlank()) put("deviceId", storedDeviceId)
             }
             val json = post(baseUrl(serverUrl), "/api/device/register", body, REGISTER_TIMEOUT_MS)
             if (json.optBoolean("ok", false)) {
@@ -108,13 +121,34 @@ class ServerApi(private val context: Context) {
                 RegisterResult.Success(deviceId, store.accountId)
             } else {
                 val error = json.optString("error", "register_failed")
-                val kind = if (error == "invalid_pairing_code") ErrorKind.WRONG_CODE else ErrorKind.SERVER_ERROR
-                RegisterResult.Failure(error, kind)
+                RegisterResult.Failure(error, kindForRegisterError(error))
             }
+        } catch (e: HttpStatusException) {
+            // v2.1: 403 reregister_blocked / 429 too_many_attempts —
+            // post() error body mehfooz rakhta hai (HttpStatusException
+            // .body), is liye server ka error string yahan parha ja
+            // sakta hai. Pehle ye aam catch mein gir kar "network_error:
+            // HTTP 403: {...}" ban jata tha — khaam JSON UI par aata tha.
+            val error = runCatching { JSONObject(e.body).optString("error", "") }
+                .getOrDefault("").ifBlank { "http_${e.status}" }
+            Log.w(TAG, "register HTTP ${e.status}: $error")
+            RegisterResult.Failure(error, kindForRegisterError(error, e.status))
         } catch (e: Exception) {
             Log.e(TAG, "register failed", e)
             RegisterResult.Failure("network_error: ${e.message}", classifyNetworkError(e))
         }
+    }
+
+    /**
+     * Register error string/status se saaf qism (v2.1 naye statuses
+     * samet). Status bhi dekhte hain — koi proxy ya purana server
+     * error string ke baghair bhi 403/429 de sakta hai.
+     */
+    private fun kindForRegisterError(error: String, status: Int = 0): ErrorKind = when {
+        error == "invalid_pairing_code" -> ErrorKind.WRONG_CODE
+        error == "reregister_blocked" || status == 403 -> ErrorKind.REREGISTER_BLOCKED
+        error == "too_many_attempts" || status == 429 -> ErrorKind.RATE_LIMITED
+        else -> ErrorKind.SERVER_ERROR
     }
 
     /**
@@ -166,12 +200,14 @@ class ServerApi(private val context: Context) {
 
     /**
      * Tell the server an offline code was used.
-     * Teen nataij (PU-N7 / R-N6): Confirmed (server ne tasdeeq kar
-     * di) / Rejected (server ne MUSTAQIL tor par mana kar diya —
-     * dobara bhejne ka faida nahi, pending report saaf kar dein) /
-     * Transient (internet / timeout / aarzi masla — baad mein dobara
-     * bhejein). Pehle ye sirf Boolean deta tha, is liye mustaqil
-     * mana bhi hamesha retry hota rehta tha.
+     * Chaar nataij (PU-N7 / R-N6 + v2.1 429): Confirmed (server ne
+     * tasdeeq kar di) / Rejected (server ne MUSTAQIL tor par mana kar
+     * diya — dobara bhejne ka faida nahi, pending report saaf kar
+     * dein) / RateLimited (HTTP 429 — TRANSIENT hai, report abhi bhi
+     * owed hai, lekin 1 ghante ka backoff zaroori hai) / Transient
+     * (internet / timeout / aarzi masla — baad mein dobara bhejein).
+     * Pehle ye sirf Boolean deta tha, is liye mustaqil mana bhi
+     * hamesha retry hota rehta tha.
      */
     fun reportOfflineCodeUsed(code: String): CodeReportResult {
         return try {
@@ -184,14 +220,20 @@ class ServerApi(private val context: Context) {
                 CodeReportResult.Confirmed
             } else {
                 val error = json.optString("error", "")
-                if (error in PERMANENT_REPORT_ERRORS) CodeReportResult.Rejected(error)
-                else CodeReportResult.Transient
+                when {
+                    error == "too_many_attempts" -> CodeReportResult.RateLimited
+                    error in PERMANENT_REPORT_ERRORS -> CodeReportResult.Rejected(error)
+                    else -> CodeReportResult.Transient
+                }
             }
         } catch (e: HttpStatusException) {
             // 4xx/5xx — body mein server ka error ho sakta hai.
             val error = runCatching { JSONObject(e.body).optString("error", "") }.getOrDefault("")
-            if (error in PERMANENT_REPORT_ERRORS) CodeReportResult.Rejected(error)
-            else CodeReportResult.Transient
+            when {
+                e.status == 429 || error == "too_many_attempts" -> CodeReportResult.RateLimited
+                error in PERMANENT_REPORT_ERRORS -> CodeReportResult.Rejected(error)
+                else -> CodeReportResult.Transient
+            }
         } catch (e: Exception) {
             Log.w(TAG, "report offline-code-used failed (pending retry rakha jaye ga)", e)
             CodeReportResult.Transient
@@ -248,12 +290,20 @@ class ServerApi(private val context: Context) {
     /** HTTP ghair-2xx jawab — is mein server ka error chhupa hota hai. */
     class HttpStatusException(val status: Int, val body: String) : RuntimeException("HTTP $status: $body")
 
-    /** "Code istemal hua" report ka nateeja (PU-N7 — tasdeeq / mustaqil mana / aarzi masla). */
+    /** "Code istemal hua" report ka nateeja (PU-N7 — tasdeeq / mustaqil mana / 429 / aarzi masla). */
     sealed interface CodeReportResult {
         /** Server ne tasdeeq kar di — report poori ho gayi. */
         data object Confirmed : CodeReportResult
         /** Server ne mustaqil tor par mana kar diya — dobara bhejne ka faida nahi. */
         data class Rejected(val error: String) : CodeReportResult
+        /**
+         * Server ne 429 diya (too_many_attempts) — ye TRANSIENT hai:
+         * report abhi bhi owed hai, pending SAAL NAHI karna (PU-N7
+         * wali safai sirf mustaqil mana par hoti hai). Lekin server
+         * 1 ghante ke liye block karta hai, is liye dobara bhejne se
+         * pehle backoff zaroori hai (dekhein PolicyEngine).
+         */
+        data object RateLimited : CodeReportResult
         /** Internet / timeout / aarzi masla — baad mein dobara bhejein. */
         data object Transient : CodeReportResult
     }
@@ -270,6 +320,10 @@ class ServerApi(private val context: Context) {
         SERVER_ERROR,
         /** Server URL hi ghalat likha hai. */
         BAD_URL,
+        /** Dobara register block hai — dukaan se naya pairing code chahiye (v2.1, HTTP 403). */
+        REREGISTER_BLOCKED,
+        /** Bahut zyada koshishen — server ne 1 ghante ke liye rok diya (v2.1, HTTP 429). */
+        RATE_LIMITED,
         /** Koi aur masla. */
         OTHER
     }

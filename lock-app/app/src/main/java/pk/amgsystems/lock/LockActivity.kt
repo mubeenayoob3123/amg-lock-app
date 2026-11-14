@@ -293,10 +293,19 @@ class LockActivity : AppCompatActivity() {
         val appContext = applicationContext
         Thread {
             val reportStore = OfflineCodeStore(appContext)
-            when (ServerApi(appContext).reportOfflineCodeUsed(code)) {
+            // v2.1 (PU-S10): 429 TRANSIENT hai — report owed rehti hai
+            // (pending saaf NAHI karna), 1 ghante ka backoff lagta hai.
+            val reportRateLimited = when (ServerApi(appContext).reportOfflineCodeUsed(code)) {
                 is ServerApi.CodeReportResult.Confirmed,
-                is ServerApi.CodeReportResult.Rejected -> reportStore.clearPendingReport()
-                is ServerApi.CodeReportResult.Transient -> Unit // pending rehta hai, agli check-in par retry
+                is ServerApi.CodeReportResult.Rejected -> {
+                    reportStore.clearPendingReport()
+                    false
+                }
+                is ServerApi.CodeReportResult.RateLimited -> {
+                    reportStore.noteReportRateLimited()
+                    true
+                }
+                is ServerApi.CodeReportResult.Transient -> false // pending rehta hai, agli check-in par retry
             }
             // Fresh check-in: server ab 24 ghante ki unlock window
             // deta hai (D-M6), is liye agli check-in par dobara lock
@@ -315,6 +324,12 @@ class LockActivity : AppCompatActivity() {
                     appContext.getString(R.string.offline_unlock_done)
                 }
                 Toast.makeText(appContext, msg, Toast.LENGTH_LONG).show()
+                // 429 par alag paigham: unlock ho gaya hai, sirf server
+                // ko code ki khabar 1 ghante baad dobara bheji jaye gi.
+                // (Dobara lock ho gaya ho to ye paigham bekaar hai.)
+                if (reportRateLimited && !stillLocked) {
+                    Toast.makeText(appContext, appContext.getString(R.string.offline_report_rate_limited), Toast.LENGTH_LONG).show()
+                }
             }
         }.start()
         dismissLockScreen()

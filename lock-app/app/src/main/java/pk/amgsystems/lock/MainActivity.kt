@@ -229,6 +229,8 @@ class MainActivity : AppCompatActivity() {
             ServerApi.ErrorKind.NO_INTERNET -> getString(R.string.error_no_internet)
             ServerApi.ErrorKind.SERVER_ASLEEP -> getString(R.string.error_server_asleep)
             ServerApi.ErrorKind.BAD_URL -> getString(R.string.error_bad_url)
+            ServerApi.ErrorKind.REREGISTER_BLOCKED -> getString(R.string.error_reregister_blocked)
+            ServerApi.ErrorKind.RATE_LIMITED -> getString(R.string.error_too_many_attempts)
             ServerApi.ErrorKind.SERVER_ERROR,
             ServerApi.ErrorKind.OTHER -> getString(R.string.error_server, rawError)
         }

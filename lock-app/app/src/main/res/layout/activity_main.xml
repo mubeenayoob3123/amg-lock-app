@@ -26,6 +26,22 @@
             android:textColor="@color/muted"
             android:textSize="15sp" />
 
+        <!-- F-9 (Wave 0.5): persistent "not protected" banner, shown whenever
+             the app is NOT Device Owner (checked on every launch). Hidden
+             once Device Owner is restored. -->
+        <TextView
+            android:id="@+id/tvNotProtected"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@color/red"
+            android:padding="14dp"
+            android:text="@string/not_protected_banner"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvDeviceOwner"
             android:layout_width="match_parent"

@@ -22,6 +22,8 @@
     <string name="device_owner_label">Device Owner</string>
     <string name="device_owner_yes">Active hai — phone lock ho sakta hai</string>
     <string name="device_owner_no">Active NAHI hai — ye normal app hai, lock nahi kare gi. QR se set karein.</string>
+    <string name="not_protected_banner">Phone mehfooz NAHI hai — Device Owner band hai. Jab tak dobara set na ho, ye phone lock nahi ho sakta aur register bhi nahi ho ga.</string>
+    <string name="register_blocked_owner">Pehle device owner banayein — phone abhi device owner nahi hai, is liye register nahi ho sakta aur lock nahi kare ga. Phone ko QR se set karein ya adb command se device owner banayein.</string>
 
     <!-- Lock screen -->
     <string name="locked_title">Ye phone LOCK hai</string>

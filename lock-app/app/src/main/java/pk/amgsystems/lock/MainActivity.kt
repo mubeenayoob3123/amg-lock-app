@@ -26,12 +26,19 @@ import java.util.Locale
  * next due date, remaining amount and grace days left. "Abhi Check
  * Karein" forces an immediate server check-in (useful right after
  * a payment, instead of waiting up to 15 minutes for WorkManager).
+ *
+ * Device Owner gate (F-8/F-9, Wave 0.5): a phone that is not Device
+ * Owner can never lock (the app is freely uninstallable and lock
+ * task cannot hold), so registration is refused until Device Owner
+ * is set, and a persistent red "not protected" banner stays on
+ * screen — with registration blocked — until it is restored.
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var store: LockStateStore
     private lateinit var lockManager: LockManager
+    private var registering = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,6 +79,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun register() {
+        // F-8 (Wave 0.5): refuse registration when the app is not Device
+        // Owner. A phone that can never lock must never look registered —
+        // the server would accept it and the shop would hand over an
+        // unprotected phone believing it is protected.
+        if (!lockManager.isDeviceOwner()) {
+            Toast.makeText(this, getString(R.string.register_blocked_owner), Toast.LENGTH_LONG).show()
+            refreshUi()
+            return
+        }
         val url = binding.etServerUrl.text.toString().trim()
         val code = binding.etPairingCode.text.toString().trim().uppercase()
         if (url.isBlank() || code.isBlank()) {
@@ -79,10 +95,12 @@ class MainActivity : AppCompatActivity() {
             return
         }
         store.serverUrl = url
+        registering = true
         binding.btnRegister.isEnabled = false
         Thread {
             val result = ServerApi(this).register(code)
             runOnUiThread {
+                registering = false
                 binding.btnRegister.isEnabled = true
                 when (result) {
                     is ServerApi.RegisterResult.Success -> {
@@ -132,7 +150,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshUi() {
-        binding.tvDeviceOwner.text = if (lockManager.isDeviceOwner()) {
+        // F-9 (Wave 0.5): Device Owner is re-checked on every launch
+        // (onResume -> refreshUi). If it was lost, the phone is not
+        // protected: show a persistent banner and keep registration
+        // blocked until Device Owner is restored.
+        val isOwner = lockManager.isDeviceOwner()
+        binding.tvNotProtected.visibility = if (isOwner) View.GONE else View.VISIBLE
+        binding.btnRegister.isEnabled = isOwner && !registering
+
+        binding.tvDeviceOwner.text = if (isOwner) {
             getString(R.string.device_owner_yes)
         } else {
             getString(R.string.device_owner_no)

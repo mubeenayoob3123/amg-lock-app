@@ -81,6 +81,12 @@ class WarningActivity : AppCompatActivity() {
         if (amount > 0) {
             details.append("${getString(R.string.warning_amount_due)}: Rs $amount\n")
         }
+        // J1-m60: kaun si qist late hai — lock screen ki tarah ("Qist 3, kul 6").
+        if (store.installmentNumber > 0 && store.installmentTotal > 0) {
+            details.append(
+                "${getString(R.string.lock_installment_number, store.installmentNumber, store.installmentTotal)}\n"
+            )
+        }
         if (dueDate.isNotBlank()) {
             details.append("${getString(R.string.locked_due)}: ${DateHelper.formatIsoDate(dueDate)}\n")
             val daysLate = DateHelper.daysOverdue(dueDate)
@@ -155,9 +161,9 @@ class WarningActivity : AppCompatActivity() {
                     }
                     is ServerApi.CheckInOutcome.ServerError -> {
                         binding.tvWarnStatus.text = getString(R.string.lock_check_server_error)
-                        PolicyEngine.recordFailure(
+                        PolicyEngine.recordCheckInServerError(
                             this,
-                            PolicyEngine.CheckInStatus.serverError(outcome.error)
+                            outcome.error
                         )
                     }
                 }

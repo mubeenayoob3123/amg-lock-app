@@ -92,6 +92,11 @@ print(base64.urlsafe_b64encode(h).decode().rstrip('='))
   ```
 - QR ko print karke shop par rakhein. **Ek QR ek hi APK version ke liye**
   hota hai — APK dobara sign ho to naya QR banayein.
+- **Pairing code wala QR har account ke liye alag hota hai** (J1-m61):
+  admin extras mein jo pairing code hai wo **sirf us account ke liye,
+  single-use** hai — aik hi print hua QR do phones par nahi chale ga.
+  Pairing code regenerate ho jaye (masalan factory reset ke baad dobara
+  enroll) to **naya QR print karein** — purana QR kaam nahi kare ga.
 
 ## 3. Phone par QR scan (exact steps)
 
@@ -132,6 +137,26 @@ adb shell dpm set-device-owner pk.amgsystems.lock/.AmgDeviceAdminReceiver
 |---|---|
 | App uninstall | Blocked (Device Owner rehte hue) |
 | Factory reset (Settings se) | Blocked |
-| Safe Mode boot | Android block nahi karne deta — lekin Safe Mode mein lock screen nahi chalti, aur normal boot par lock wapas aa jata hai; Device Owner role Safe Mode mein bhi rehta hai |
+| Safe Mode boot | **Blocked (v1.4.0)** — DISALLOW_SAFE_BOOT: phone Safe Mode mein boot nahi hota |
+| USB debugging / adb | **Blocked (v1.4.0)** — DISALLOW_DEBUGGING_FEATURES: policies lagne ke baad adb band ho jata hai (test ke liye adb sirf setup se pehle) |
 | Recovery se forced reset | Phone wipe ho sakta hai — phir **FRP (Factory Reset Protection)** + likha hua agreement hi bachat hai; setup par phone dobara enroll karna pare ga |
 | Firmware flash (expert) | Koi bhi software lock 100% nahi rok sakta — aam customer ke liye kaafi hai |
+
+## 6. Factory reset ke baad dobara enroll (J1-m52)
+
+Recovery se forced reset ho jaye to phone wipe ho jata hai aur Device Owner
+khatam ho jata hai. Dobara enroll karne ke steps:
+
+1. Phone ko **dobara QR se provision** karein (upar §3 ke steps).
+2. **Dashboard mein account ka pairing code regenerate karein** — purana
+   code dobara register nahi ho ga (re-register guard mana kar de ga).
+3. Phone par **naya pairing code** likh kar Register karein (ya dashboard
+   ka naya pairing QR scan karein — purana print hua QR kaam nahi kare ga,
+   dekhein §2).
+4. Status ACTIVE dikhe → phone customer ko wapas dein.
+
+**Server URL lock (v1.4.0, J2-M15c):** Register ke baad server URL lock ho
+jata hai — reset ke baad bhi wahi URL rehta hai, customer phone ko kisi
+nakli server ki taraf nahi mod sakta. URL badalna ho to phone **dobara QR
+provisioning** se set karna pare ga (fresh provisioning hi URL badal sakti
+hai).

@@ -1,5 +1,6 @@
 package pk.amgsystems.lock
 
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -36,6 +37,9 @@ import java.net.UnknownHostException
  *     Response: { "ok": true, "deviceId": "dev_...", "accountId": "...",
  *                 "shopName": "Al Arab Electronic", "shopPhone": "03xx-xxxxxxx",
  *                 "resetPin": "4821" }   // v2.1, optional — reset sirf is PIN se (PU-M8)
+ *                 // v1.4.0 / server unified-4, optional: "dashboardAccountId": 101
+ *                 // (dashboard ka account id — dikhane ke liye; na ho to
+ *                 // server ka accountId istemal hota hai, J1-m55)
  *     Wrong code -> { "ok": false, "error": "invalid_pairing_code" }
  *     v2.1 naye statuses: HTTP 403 reregister_blocked (dobara register
  *     ke liye purana device ya dukaan se naya pairing code chahiye)
@@ -45,6 +49,8 @@ import java.net.UnknownHostException
  *     Request : { "deviceId": "dev_...", "pairingCode": "YD5NG6RK" }
  *                 // Wave 5.4, optional: "fcmToken": "..." — token refresh
  *                 // check-in ke saath server tak pahunchta hai.
+ *                 // v1.4.0, optional: "deviceOwnerLost": true — Device
+ *                 // Owner kho gaya ho to server ko khabar (J2-m29).
  *     Response: { "ok": true,
  *                 "instruction": "stay_unlocked" | "warn" | "lock_now" | "permanent_unlock",
  *                 "dueDate": "2026-12-10", "remainingAmount": 48000,
@@ -56,7 +62,17 @@ import java.net.UnknownHostException
  *                 "monthlyAmount": 10000, "offlineUnlockUntil": "2026-11-15T..."
  *                 // v2.1 (optional — PU-S9 "Qist #3 of 6"):
  *                 "installmentNumber": 3, "installmentTotal": 6
+ *                 // v1.4.0 / server unified-4 (optional — J2-M14 deadline lock):
+ *                 "schedule": [{"seq":1,"dueDate":"2026-11-10","amount":10000,"paidAmount":0}],
+ *                 "graceDays": 5,
+ *                 // v1.4.0 (optional — J2-m36): code pehle se istemal ho chuka.
+ *                 "offlineCodeUsed": true
  *               }
+ *     Check-in ka pairing code purana ho (dashboard ne code dobara
+ *     bana diya ho) to jawab { "ok": false, "error":
+ *     "pairing_code_changed" } hota hai (unified-4; purana server
+ *     "invalid_pairing_code" deta hai — dono ka matlab aik hi hai:
+ *     naya code le kar dobara register karein, J1-m54).
  *     The server applies the policy itself: grace (3/5/7 days) expired
  *     -> lock_now; a payment covering the overdue installment -> the
  *     next check-in returns stay_unlocked; final payment -> permanent_unlock.
@@ -89,7 +105,9 @@ class ServerApi(private val context: Context) {
         return try {
             val body = JSONObject().apply {
                 put("pairingCode", pairingCode.trim().uppercase())
-                put("imei", DeviceInfo.imei(context))
+                // Wire field ka naam "imei" hi rehta hai (server contract),
+                // lekin value ANDROID_ID hai — dekhein DeviceInfo (J1-m62).
+                put("imei", DeviceInfo.androidId(context))
                 put("model", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("androidVersion", Build.VERSION.RELEASE)
                 // v2.1 (PU-M8): stored deviceId bhej dein jab ho — server
@@ -118,16 +136,30 @@ class ServerApi(private val context: Context) {
                 store.deviceId = deviceId
                 store.pairingCode = pairingCode.trim().uppercase()
                 store.accountId = json.opt("accountId")?.toString() ?: ""
+                // J1-m55 (v1.4.0 / unified-4): dashboard ka account id —
+                // na ho to khaali rehta hai, dikhane ke liye server id
+                // istemal hota hai (LockStateStore.displayAccountId).
+                if (json.has("dashboardAccountId") && !json.isNull("dashboardAccountId")) {
+                    store.dashboardAccountId = json.opt("dashboardAccountId")?.toString() ?: ""
+                }
                 store.isRegistered = true
                 store.shopName = json.optString("shopName", store.shopName)
                 store.shopPhone = json.optString("shopPhone", store.shopPhone)
                 // PU-M8 (v2.1): Reset PIN — sirf tab likhein jab server
                 // ne bheja ho; purana server ye field nahi bhejta, tab
-                // pehle se stored PIN barkarar rehta hai.
-                if (json.has("resetPin")) {
+                // pehle se stored PIN barkarar rehta hai. null bheja ho
+                // to bhi barkarar rehta hai (PIN wipe nahi hota).
+                if (json.has("resetPin") && !json.isNull("resetPin")) {
                     store.resetPin = json.optString("resetPin", "")
+                    // J2-M15(a): PIN jari hua — ab reset sirf isi se ho ga.
+                    if (store.resetPin.isNotBlank()) store.resetPinIssued = true
                 }
-                RegisterResult.Success(deviceId, store.accountId)
+                // J2-M15(c): register ke baad server URL lock — reset ke
+                // baad bhi wahi URL rehta hai (nakli server nahi).
+                store.serverUrlLocked = true
+                // J2-p18: boot state taaza karein (registered + halat).
+                BootState.sync(context)
+                RegisterResult.Success(deviceId, store.displayAccountId)
             } else {
                 val error = json.optString("error", "register_failed")
                 RegisterResult.Failure(error, kindForRegisterError(error))
@@ -175,6 +207,11 @@ class ServerApi(private val context: Context) {
                 // tak pahunchta hai (FcmManager.onNewToken ke baad).
                 val fcmToken = store.fcmToken
                 if (fcmToken.isNotBlank()) put("fcmToken", fcmToken)
+                // J2-m29: Device Owner kho gaya ho to server ko batayein
+                // taake shop ko nazar aaye (server is flag ko store karta
+                // hai; purana server isay nazar-andaaz kar deta hai).
+                val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                if (!dpm.isDeviceOwnerApp(context.packageName)) put("deviceOwnerLost", true)
             }
             val json = post(baseUrl(store.serverUrl), "/api/device/checkin", body, CHECKIN_TIMEOUT_MS)
             if (!json.optBoolean("ok", false)) {
@@ -202,7 +239,12 @@ class ServerApi(private val context: Context) {
                     offlineUnlockUntil = if (json.has("offlineUnlockUntil")) json.optString("offlineUnlockUntil", "") else null,
                     // v2.1 (PU-S9) — optional, purana server nahi bhejta.
                     installmentNumber = if (json.has("installmentNumber")) json.optInt("installmentNumber", 0) else null,
-                    installmentTotal = if (json.has("installmentTotal")) json.optInt("installmentTotal", 0) else null
+                    installmentTotal = if (json.has("installmentTotal")) json.optInt("installmentTotal", 0) else null,
+                    // v1.4.0 / unified-4 (J2-M14) — optional, purana server nahi bhejta.
+                    scheduleJson = if (json.has("schedule")) json.optJSONArray("schedule")?.toString() else null,
+                    graceDays = if (json.has("graceDays")) json.optInt("graceDays", -1).takeIf { it >= 0 } else null,
+                    // v1.4.0 (J2-m36) — optional: code pehle se istemal ho chuka.
+                    offlineCodeUsed = if (json.has("offlineCodeUsed")) json.optBoolean("offlineCodeUsed", false) else null
                 )
             )
         } catch (e: Exception) {
@@ -250,6 +292,33 @@ class ServerApi(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "report offline-code-used failed (pending retry rakha jaye ga)", e)
             CodeReportResult.Transient
+        }
+    }
+
+    /**
+     * Connection test (J1-p13) — Setup mein "Connection Test Karein"
+     * button ke liye. Sirf ye check karta hai ke server URL par
+     * server jawab de raha hai ya nahi (koi registration nahi, koi
+     * state nahi badalti). Render free server sone ke baad jagane
+     * mein ~60 second leta hai, is liye timeout 60 second hai.
+     */
+    fun testConnection(serverUrl: String): Boolean {
+        return try {
+            val url = URL(baseUrl(serverUrl) + "/health")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = TEST_TIMEOUT_MS
+                readTimeout = TEST_TIMEOUT_MS
+                setRequestProperty("Accept", "application/json")
+            }
+            try {
+                conn.responseCode in 200..299
+            } finally {
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "testConnection failed for $serverUrl", e)
+            false
         }
     }
 
@@ -380,13 +449,21 @@ class ServerApi(private val context: Context) {
         /** Overdue qist ka number (masalan 3) — "Qist #3 of 6" (PU-S9). */
         val installmentNumber: Int?,
         /** Kul qiston ki tadaad (masalan 6). */
-        val installmentTotal: Int?
+        val installmentTotal: Int?,
+        // --- v1.4.0 / unified-4 optional fields (null = purana server, fallback istemal karein) ---
+        /** Aakhri sync wala schedule, raw JSON array — local deadline lock ke liye (J2-M14). */
+        val scheduleJson: String?,
+        /** Account ki grace (din mein) — local deadline lock ke liye (J2-M14). */
+        val graceDays: Int?,
+        /** Server kehta hai offline code pehle se istemal ho chuka — local code foran bekaar karein (J2-m36). */
+        val offlineCodeUsed: Boolean?
     )
 
     companion object {
         private const val TAG = "ServerApi"
         private const val REGISTER_TIMEOUT_MS = 60_000
         private const val CHECKIN_TIMEOUT_MS = 60_000
+        private const val TEST_TIMEOUT_MS = 60_000
         /**
          * "Code istemal hua" report par ye server errors MUSTAQIL hain —
          * in par dobara bhejna kabhi kamyab nahi ho ga (PU-N7):

@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.text.TextWatcher
+import android.text.Editable
 import android.util.Log
 import android.view.View
 import android.view.WindowManager
@@ -49,6 +51,9 @@ class LockActivity : AppCompatActivity() {
     private lateinit var offlineStore: OfflineCodeStore
     private var checking = false
 
+    /** Boot-time lock (J2-p18): storage band ho sakti hai — boot state se lock dikhana hai. */
+    private var bootLock = false
+
     /** F-26 / A-M5: background unlock par lock screen khud band ho. */
     private val stateListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key != LockStateStore.KEY_LOCK_STATE) return@OnSharedPreferenceChangeListener
@@ -64,6 +69,17 @@ class LockActivity : AppCompatActivity() {
         lockManager = LockManager(this)
         offlineStore = OfflineCodeStore(this)
         store.addListener(stateListener)
+        bootLock = intent.getBooleanExtra(EXTRA_BOOT_LOCK, false)
+
+        // J1-p12: ghalti ka paigham refreshUi se nahi mitta — sirf tab
+        // jab customer naya code likhna shuru kare.
+        binding.etOfflineCode.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                binding.tvOfflineError.text = ""
+            }
+            override fun afterTextChanged(s: Editable?) {}
+        })
 
         // Show above the keyguard, wake the screen.
         // A-n9: FLAG_KEEP_SCREEN_ON hata diya — raat ko lock hone par
@@ -94,6 +110,12 @@ class LockActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (store.lockState != LockState.LOCKED) {
+            // Locked boot: encrypted storage band hai, boot state
+            // LOCKED kehti hai — screen band NAHI karte (J2-p18).
+            if (bootLock && SecurePrefs.degraded && BootState.isLocked(this)) {
+                refreshUi()
+                return
+            }
             // We were unlocked (payment / permanent unlock) — leave.
             dismissLockScreen()
             return
@@ -109,7 +131,7 @@ class LockActivity : AppCompatActivity() {
                 .onFailure { e ->
                     Log.e(TAG, "startLockTask() FAILED — phone is NOT pinned, Home can escape the lock", e)
                     lockManager.applyDeviceOwnerPolicies()
-                    lockManager.lockNow()
+                    lockManager.lockNow(this)
                 }
         }
         refreshUi()
@@ -118,6 +140,11 @@ class LockActivity : AppCompatActivity() {
     /** Lock state badli (listener se) — agar ab lock nahi to screen band karein. */
     private fun onLockStateChanged() {
         if (store.lockState == LockState.LOCKED) {
+            refreshUi()
+            return
+        }
+        // Locked boot: storage band ho to boot state par bharosa karein (J2-p18).
+        if (bootLock && SecurePrefs.degraded && BootState.isLocked(this)) {
             refreshUi()
             return
         }
@@ -170,9 +197,24 @@ class LockActivity : AppCompatActivity() {
         if (store.remainingAmount > 0 && store.remainingAmount != overdueAmount) {
             details.append("${getString(R.string.lock_total_remaining)}: Rs ${store.remainingAmount}\n")
         }
+        // J2-M14: local deadline lock — offline wala paigham (internet
+        // on karein ya dukaan se rabta karein).
+        if (store.localLock) {
+            details.append("\n${getString(R.string.lock_local_deadline)}")
+        }
+        // J2-m29: Device Owner kho gaya ho to saaf batayein — lock
+        // screen dikh to rahi hai lekin pin nahi ho sakti.
+        if (!lockManager.isDeviceOwner()) {
+            details.append("\n${getString(R.string.lock_owner_lost)}")
+        }
+        // J2-M17: storage band ho to saaf batayein (koi data nahi khota).
+        if (SecurePrefs.degraded) {
+            details.append("\n${getString(R.string.lock_storage_degraded)}")
+        }
         binding.tvLockDetails.text = details.toString().trimEnd()
 
         // F-24: time context — kab se lock hai, agla check kab ho ga.
+        // Waqt hamesha PKT mein (DateHelper, J1-m72).
         val timeContext = StringBuilder()
         if (store.lockedSinceAt > 0) {
             timeContext.append(
@@ -186,7 +228,14 @@ class LockActivity : AppCompatActivity() {
         }
         if (nextCheck > 0) {
             if (timeContext.isNotEmpty()) timeContext.append("\n")
-            timeContext.append("${getString(R.string.lock_next_check)}: ${DateHelper.formatTime(nextCheck)}")
+            // J1-p10: Doze ki wajah se aakhri check purana ho to "Agla
+            // check" guzra hua waqt dikhata tha — ab guzra waqt kabhi
+            // nahi dikhate, "jald hi" kehte hain.
+            if (nextCheck > System.currentTimeMillis()) {
+                timeContext.append("${getString(R.string.lock_next_check)}: ${DateHelper.formatTime(nextCheck)}")
+            } else {
+                timeContext.append("${getString(R.string.lock_next_check)}: ${getString(R.string.lock_next_check_soon)}")
+            }
         }
         binding.tvLockTime.text = timeContext.toString()
         binding.tvLockTime.visibility = if (timeContext.isEmpty()) View.GONE else View.VISIBLE
@@ -199,7 +248,16 @@ class LockActivity : AppCompatActivity() {
         binding.btnCallShop.visibility =
             if (store.shopPhone.isNotBlank()) View.VISIBLE else View.GONE
         binding.tvOfflineHint.text = getString(R.string.offline_code_hint2)
-        binding.tvOfflineError.text = ""
+        // J1-p12: ghalti ka paigham yahan NAHI mitate — screen resume
+        // par "Ghalat code" ghaib ho jata tha. Sirf naya code likhne
+        // par mitta hai (TextWatcher, onCreate mein). Lockout ki halat
+        // dobara khulne par bhi nazar aaye (J2-m32).
+        if (offlineStore.isCodeLockedOut() && binding.tvOfflineError.text.isNullOrBlank()) {
+            binding.tvOfflineError.text = getString(
+                R.string.offline_code_locked_out,
+                offlineStore.codeLockoutMinutesLeft()
+            )
+        }
     }
 
     /** F-28: payment ke baad customer khud dobara check kare. */
@@ -233,10 +291,7 @@ class LockActivity : AppCompatActivity() {
                     }
                     is ServerApi.CheckInOutcome.ServerError -> {
                         binding.tvCheckStatus.text = getString(R.string.lock_check_server_error)
-                        PolicyEngine.recordFailure(
-                            this,
-                            PolicyEngine.CheckInStatus.serverError(outcome.error)
-                        )
+                        PolicyEngine.recordCheckInServerError(this, outcome.error)
                     }
                 }
             }
@@ -257,6 +312,15 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun tryOfflineUnlock() {
+        // J2-m32: 5 ghalat koshishon ke baad 15 minute ki rok (restart
+        // ke baad bhi barkarar rehti hai).
+        if (offlineStore.isCodeLockedOut()) {
+            binding.tvOfflineError.text = getString(
+                R.string.offline_code_locked_out,
+                offlineStore.codeLockoutMinutesLeft()
+            )
+            return
+        }
         val code = binding.etOfflineCode.text.toString().trim().uppercase()
         // F-25: khaali field ka paigham "ghalat code" se alag ho.
         if (code.isBlank()) {
@@ -273,9 +337,16 @@ class LockActivity : AppCompatActivity() {
             return
         }
         if (!offlineStore.verifyAndBurn(code)) {
-            binding.tvOfflineError.text = getString(R.string.offline_code_wrong)
+            // Ghalat code — koshish darj karein (5 par rok lagti hai).
+            val nowLockedOut = offlineStore.noteWrongCodeAttempt()
+            binding.tvOfflineError.text = if (nowLockedOut) {
+                getString(R.string.offline_code_locked_out, CODE_LOCKOUT_MINUTES)
+            } else {
+                getString(R.string.offline_code_wrong)
+            }
             return
         }
+        offlineStore.resetCodeAttempts()
         // Code was correct AND is now burned. Unlock locally first
         // (works fully offline), then tell the server if we can.
         // A-M3: report nakaam ho to pending rakhein — agli check-in
@@ -339,5 +410,10 @@ class LockActivity : AppCompatActivity() {
         private const val TAG = "LockActivity"
         private const val EMERGENCY_NUMBER = "1122"
         private const val CHECK_INTERVAL_MS = 15L * 60L * 1000L
+        /** Offline-code rok ki muddat, paigham ke liye (OfflineCodeStore se milti julti). */
+        private const val CODE_LOCKOUT_MINUTES = 15L
+
+        /** Boot-time lock (J2-p18) — BootReceiver is extra ke saath kholta hai. */
+        const val EXTRA_BOOT_LOCK = "amg_boot_lock"
     }
 }

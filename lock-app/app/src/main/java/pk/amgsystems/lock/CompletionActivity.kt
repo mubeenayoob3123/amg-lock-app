@@ -1,7 +1,9 @@
 package pk.amgsystems.lock
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import pk.amgsystems.lock.databinding.ActivityCompletionBinding
 
@@ -18,11 +20,18 @@ import pk.amgsystems.lock.databinding.ActivityCompletionBinding
  * (Setting > Apps > AMG Lock > Uninstall), kabhi khamosh nakaami nahi.
  * Registration state tab tak nahi mitayi jati jab tak uninstall
  * waqai na ho jaye (uninstall hone par Android khud sab mita deta hai).
+ *
+ * J1-m70: dobara enroll ka rasta bhi yahin hai — phone dobara qist
+ * par bechna ho (exchange / wapas le kar dobara sale) to registration
+ * saaf karke dobara register kiya ja sakta hai. NOTE: dobara register
+ * ke liye phone ko QR se dobara Device Owner banana parta hai
+ * (completion par Device Owner hat chuka hota hai).
  */
 class CompletionActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityCompletionBinding
     private lateinit var lockManager: LockManager
+    private lateinit var store: LockStateStore
     private var uninstallPrompted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +40,10 @@ class CompletionActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         lockManager = LockManager(this)
+        store = LockStateStore(this)
+
+        // J1-p15: screen khul gayi — completion notification ab zaroorat nahi.
+        NotificationHelper.cancelCompletion(this)
 
         binding.tvDoneTitle.text = getString(R.string.completed_title)
         binding.tvDoneBody.text = getString(R.string.completed_body)
@@ -38,6 +51,7 @@ class CompletionActivity : AppCompatActivity() {
 
         binding.btnUninstall.setOnClickListener { tryUninstall() }
         binding.btnRetryOwner.setOnClickListener { retryClearOwner() }
+        binding.btnReEnroll.setOnClickListener { confirmReEnroll() }
     }
 
     override fun onResume() {
@@ -86,5 +100,34 @@ class CompletionActivity : AppCompatActivity() {
         } else {
             getString(R.string.completed_uninstall_failed)
         }
+    }
+
+    /**
+     * Dobara enroll (J1-m70): phone dobara qist par bechna ho to
+     * registration saaf karke Setup par le jayein. Tasdeeq ke saath —
+     * aur saaf lafzon mein batayein ke dobara register ke liye phone
+     * ko QR se dobara Device Owner banana pare ga.
+     */
+    private fun confirmReEnroll() {
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.completed_reenroll_title))
+            .setMessage(getString(R.string.completed_reenroll_message))
+            .setPositiveButton(getString(R.string.completed_reenroll_confirm)) { _, _ -> reEnroll() }
+            .setNegativeButton(getString(R.string.reset_cancel), null)
+            .show()
+    }
+
+    private fun reEnroll() {
+        NotificationHelper.cancelWarning(this)
+        NotificationHelper.cancelCompletion(this)
+        OfflineCodeStore(this).clearAll()
+        store.clearAll()
+        BootState.sync(this)
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+        )
+        finish()
     }
 }

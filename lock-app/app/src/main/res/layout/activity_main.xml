@@ -42,6 +42,20 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
+        <!-- J2-M17: encrypted storage band ho to banner (koi data nahi khota). -->
+        <TextView
+            android:id="@+id/tvStorageError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@color/red"
+            android:padding="14dp"
+            android:text="@string/storage_error_banner"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvDeviceOwner"
             android:layout_width="match_parent"
@@ -106,6 +120,108 @@
                 android:layout_marginTop="8dp"
                 android:backgroundTint="@color/navy"
                 android:text="@string/warning_banner_button" />
+        </LinearLayout>
+
+        <!-- J1-m54 / J2-m34: dobara register ka banner — pairing code
+             badal gaya ho, ya phone server par registered na raha ho. -->
+        <LinearLayout
+            android:id="@+id/llActionBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/amber"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvActionText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text=""
+                android:textColor="@color/white"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <Button
+                android:id="@+id/btnActionRegister"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/action_register_button" />
+        </LinearLayout>
+
+        <!-- J1-m59: notification permission band ho to card + dobara maangne ka button. -->
+        <LinearLayout
+            android:id="@+id/llNotifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/white"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/notifications_title"
+                android:textColor="@color/text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/notifications_body"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnNotificationsEnable"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/notifications_button" />
+        </LinearLayout>
+
+        <!-- J2-m35: completion adhoori ho (Device Owner hatna baqi) to retry card. -->
+        <LinearLayout
+            android:id="@+id/llCompletionPending"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@color/white"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/completion_pending_title"
+                android:textColor="@color/text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/completion_pending_body"
+                android:textColor="@color/muted"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btnRetryCompletion"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/completion_pending_button" />
         </LinearLayout>
 
         <!-- F-33 / A-M10: battery optimisation exemption card. -->
@@ -194,6 +310,47 @@
                 android:textColor="@color/muted"
                 android:textSize="13sp" />
 
+            <!-- J2-M15(c): server URL lock ho to note (reset ke baad bhi). -->
+            <TextView
+                android:id="@+id/tvServerUrlLocked"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/server_url_locked_note"
+                android:textColor="@color/muted"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- J1-m62: Device ID (ANDROID_ID — IMEI nahi) enrollment par. -->
+            <TextView
+                android:id="@+id/tvDeviceId"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@color/white"
+                android:padding="14dp"
+                android:text=""
+                android:textColor="@color/text"
+                android:textSize="14sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/device_id_note"
+                android:textColor="@color/muted"
+                android:textSize="13sp" />
+
+            <!-- J1-p13: connection test — register kiye baghair server check karein. -->
+            <Button
+                android:id="@+id/btnTestConnection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:backgroundTint="@color/navy"
+                android:text="@string/test_connection_button" />
+
             <!-- QR pairing scan (A-M13 / Wave 5.6): dashboard ka pairing
                  QR scan karein — server URL + pairing code khud bhar
                  jate hain, phir Register dabayein. -->
@@ -201,7 +358,7 @@
                 android:id="@+id/btnQrScan"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="10dp"
                 android:backgroundTint="@color/navy"
                 android:text="@string/qr_scan_button" />
 

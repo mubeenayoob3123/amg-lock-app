@@ -1,22 +1,35 @@
 package pk.amgsystems.lock
 
-import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.util.Date
 import java.util.Locale
 
 /**
- * Date helpers — sab tareekhein Pakistan time (Asia/Karachi) mein,
- * taake server (S-M1 fix) aur phone aik hi "aaj" par hon.
- * minSdk 26 hai, is liye java.time seedha istemal ho sakta hai.
+ * Date helpers — sab tareekhein AUR WAQT Pakistan time (Asia/Karachi)
+ * mein, taake server aur phone aik hi "aaj" aur aik hi ghari par hon.
+ *
+ * J1-m72 fix: pehle formatDateTime/formatTime phone ke apne timezone
+ * mein waqt dikhate thay (jabke tareekhein PKT mein thin) — ghalat
+ * timezone wale phone par "Aakhri check" aur due tareekh mein ghanton
+ * ka farq nazar aata tha. Ab har format PKT hai.
+ *
+ * java.time formatters thread-safe hain (SimpleDateFormat ke bar-aks,
+ * jo shared istemal mein kharab ho jata hai) — is liye ye shared
+ * formatter mehfooz hain. minSdk 26 hai, java.time seedha chalta hai.
  */
 object DateHelper {
 
     private val PKT: ZoneId = ZoneId.of("Asia/Karachi")
+
+    private val DATE_FMT: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())
+    private val DATETIME_FMT: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.getDefault())
+    private val TIME_FMT: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
 
     /** Aaj ki tareekh (Pakistan). */
     fun today(): LocalDate = LocalDate.now(PKT)
@@ -33,9 +46,7 @@ object DateHelper {
     /** Aaj se [days] din baad ki tareekh, "12 Nov 2026" jaisi shakal mein. */
     fun datePlusDaysFormatted(days: Int): String {
         return runCatching {
-            val d = today().plusDays(days.toLong())
-            SimpleDateFormat("d MMM yyyy", Locale.getDefault())
-                .format(Date.from(d.atStartOfDay(PKT).toInstant()))
+            DATE_FMT.format(today().plusDays(days.toLong()))
         }.getOrDefault("")
     }
 
@@ -43,16 +54,14 @@ object DateHelper {
     fun formatIsoDate(iso: String): String {
         if (iso.isBlank()) return ""
         return runCatching {
-            val d = LocalDate.parse(iso.trim())
-            SimpleDateFormat("d MMM yyyy", Locale.getDefault())
-                .format(Date.from(d.atStartOfDay(PKT).toInstant()))
+            DATE_FMT.format(LocalDate.parse(iso.trim()))
         }.getOrDefault(iso)
     }
 
-    /** Millis ko "12 Nov, 14:32" jaisi shakal mein badlein. */
+    /** Millis ko "12 Nov, 14:32" jaisi shakal mein badlein (Pakistan waqt). */
     fun formatDateTime(millis: Long): String {
         if (millis <= 0L) return ""
-        return SimpleDateFormat("d MMM, HH:mm", Locale.getDefault()).format(Date(millis))
+        return DATETIME_FMT.format(Instant.ofEpochMilli(millis).atZone(PKT))
     }
 
     /**
@@ -69,9 +78,20 @@ object DateHelper {
         }.getOrDefault(iso)
     }
 
-    /** Millis ko sirf waqt "14:32" mein badlein. */
+    /** Millis ko sirf waqt "14:32" mein badlein (Pakistan waqt). */
     fun formatTime(millis: Long): String {
         if (millis <= 0L) return ""
-        return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(millis))
+        return TIME_FMT.format(Instant.ofEpochMilli(millis).atZone(PKT))
+    }
+
+    /**
+     * "yyyy-MM-dd" tareekh ki shuruaat (PKT midnight) millis mein —
+     * local deadline lock (J2-M14) ke liye. Parse na ho to null.
+     */
+    fun startOfDayMillis(isoDate: String): Long? {
+        if (isoDate.isBlank()) return null
+        return runCatching {
+            LocalDate.parse(isoDate.trim()).atStartOfDay(PKT).toInstant().toEpochMilli()
+        }.getOrNull()
     }
 }

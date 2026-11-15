@@ -32,12 +32,19 @@ import com.google.firebase.messaging.FirebaseMessaging
  *
  * Setup (Mubeen ka step): hidden_files/fcm-setup-guide.md — Firebase
  * project banayein, Android app add karein (pk.amgsystems.lock),
- * google-services.json app/ folder mein rakhein, server key Render
- * env FCM_SERVER_KEY mein lagayein, phir release APK dobara banayein.
+ * google-services.json app/ folder mein rakhein, service-account
+ * credential Render env mein lagayein (server HTTP v1 se push bhejta
+ * hai — legacy server key band ho chuki hai), phir release APK
+ * dobara banayein.
  */
 object FcmManager {
 
     private const val TAG = "FcmManager"
+
+    /** Token retry backoff (J1-m58): pehli retry 15 minute baad, zyada se zyada 4 ghante. */
+    private const val RETRY_BASE_MS = 15L * 60L * 1000L
+    private const val RETRY_MAX_MS = 4L * 60L * 60L * 1000L
+    private const val MAX_RETRY_STEPS = 4
 
     /**
      * FCM istemal ho sakta hai? Dono shartein zaroori hain:
@@ -52,6 +59,9 @@ object FcmManager {
     /**
      * App start par token taaza karein — FCM band ho to kuch nahi hota
      * (no-op). Token milne par onTokenReceived chalta hai.
+     * Nakaam ho to backoff ke saath retry hota hai (J1-m58) — pehle
+     * "push off until next launch" likh kar chhor diya jata tha, aur
+     * customer ye app kabhi kholta hi nahi.
      */
     fun refreshTokenIfAvailable(context: Context) {
         if (!isAvailable(context)) {
@@ -62,11 +72,42 @@ object FcmManager {
             FirebaseMessaging.getInstance().token
                 .addOnSuccessListener { token -> onTokenReceived(context, token) }
                 .addOnFailureListener { e ->
-                    Log.w(TAG, "FCM token fetch failed — push off until next launch", e)
+                    Log.w(TAG, "FCM token fetch failed — will retry with backoff", e)
+                    noteFetchFailed(context)
                 }
         }.onFailure { e ->
-            Log.w(TAG, "FCM token fetch threw — push off", e)
+            Log.w(TAG, "FCM token fetch threw — will retry with backoff", e)
+            noteFetchFailed(context)
         }
+    }
+
+    /**
+     * Token fetch nakaam ho to backoff lagayein: 15 minute se shuru,
+     * har dafa dugna (15m → 30m → 1h → 2h), zyada se zyada 4 ghante.
+     * Waqt store mein rehta hai (restart ke baad bhi barkarar).
+     */
+    private fun noteFetchFailed(context: Context) {
+        val store = LockStateStore(context)
+        val attempts = (store.fcmTokenFetchAttempts + 1).coerceAtMost(MAX_RETRY_STEPS)
+        store.fcmTokenFetchAttempts = attempts
+        val delayMs = RETRY_BASE_MS * (1L shl (attempts - 1))
+        store.fcmTokenNextRetryAt = System.currentTimeMillis() + delayMs.coerceAtMost(RETRY_MAX_MS)
+    }
+
+    /**
+     * Agar retry ka waqt aa gaya ho aur token abhi bhi na ho to token
+     * dobara lein (J1-m58). CheckInWorker (har 15-minute tick) aur
+     * MainActivity (app kholne par) se call hota hai — taake boot par
+     * network na hone ya reset ke baad token hamesha ke liye gum na ho.
+     */
+    fun maybeRetryTokenFetch(context: Context) {
+        if (!isAvailable(context)) return
+        val store = LockStateStore(context)
+        if (store.fcmToken.isNotBlank()) return // token hai — retry ki zaroorat nahi
+        val nextRetry = store.fcmTokenNextRetryAt
+        if (nextRetry > 0L && System.currentTimeMillis() < nextRetry) return
+        Log.i(TAG, "Retrying FCM token fetch (previous attempt failed)")
+        refreshTokenIfAvailable(context)
     }
 
     /**
@@ -80,6 +121,9 @@ object FcmManager {
         val store = LockStateStore(context)
         val changed = store.fcmToken != token
         store.fcmToken = token
+        // Kamyabi — retry ka hisaab saaf karein.
+        store.fcmTokenFetchAttempts = 0
+        store.fcmTokenNextRetryAt = 0L
         Log.i(TAG, "FCM token ${if (changed) "updated" else "unchanged"}")
         if (changed && store.isRegistered) {
             CheckInWorker.enqueueImmediate(context)

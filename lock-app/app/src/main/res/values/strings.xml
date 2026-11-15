@@ -37,6 +37,14 @@
     <string name="registered_account">Account</string>
     <string name="last_check_label">Aakhri check</string>
     <string name="offline_window_label">Offline code ki window khatam</string>
+    <string name="device_id_label">Device ID: %1$s</string>
+    <string name="device_id_note">Ye phone ki ANDROID_ID hai (IMEI nahi) — register se pehle shop isay account se mila le.</string>
+    <string name="server_url_locked_note">Server URL lock hai — reset ke baad bhi wahi rahe ga. Badalne ke liye phone dobara QR se set karna pare ga.</string>
+    <string name="storage_error_banner">Phone ki hifazati storage khul nahi rahi — koi data delete nahi hua. Phone restart karein; agar masla rahe to dukaan se rabta karein.</string>
+    <string name="test_connection_button">Connection Test Karein</string>
+    <string name="testing_connection">Connection test ho raha hai… (server jag raha ho to 1 minute lag sakta hai)</string>
+    <string name="test_connection_ok">Connection theek hai — server jawab de raha hai</string>
+    <string name="test_connection_failed">Server se rabta nahi ho raha — internet check karein, URL dobara dekhein, ya 1 minute baad dobara karein</string>
     <string name="reset_button">Dobara Register Karein (Reset)</string>
     <string name="reset_title">Dobara register karein?</string>
     <string name="reset_message">Purani registration khatam ho jaye gi aur aap ko pairing code dobara likhna pare ga. Ye sirf tab karein jab shop ke kahe par code badal raha ho.</string>
@@ -48,6 +56,31 @@
     <string name="reset_pin_hint">Reset PIN</string>
     <string name="reset_pin_blank">Pehle Reset PIN likhein</string>
     <string name="reset_pin_wrong">Reset PIN ghalat hai — reset nahi hua. Sahi PIN shop se lein.</string>
+    <string name="reset_pin_locked_out">Reset PIN 5 dafa ghalat likha gaya — %1$d minute baad dobara koshish karein</string>
+    <string name="reset_pin_lost">Reset PIN gum ho gaya hai — reset phone se nahi ho sakta. Dukaan se rabta karein — dukaan dashboard se naya pairing code de gi.</string>
+    <string name="reset_blocked_storage">Storage ka masla hai — pehle phone restart karein, phir reset karein.</string>
+
+    <!-- Dobara register banner (pairing code badla / server par register nahi) -->
+    <string name="action_code_changed">Dukaan ne pairing code badal diya hai — naya code le kar dobara register karein.</string>
+    <string name="action_not_registered">Ye phone server par registered nahi raha — dukaan se dobara register karwayein.</string>
+    <string name="action_register_button">Dobara Register Karein</string>
+    <string name="notif_reregister_title">Dobara Register Karna Hai</string>
+    <string name="notif_reregister_not_registered">Ye phone server par registered nahi raha — dukaan se dobara register karwayein.</string>
+    <string name="notif_reregister_code_changed">Dukaan ne pairing code badal diya hai — naya code le kar dobara register karein.</string>
+
+    <!-- Notification permission card -->
+    <string name="notifications_title">Notification band hai</string>
+    <string name="notifications_body">Warning ki notification band hai — qist late hone par khabar nahi mile gi. Notification on karein.</string>
+    <string name="notifications_button">Notification On Karein</string>
+    <string name="notifications_settings_failed">Setting nahi khuli — Setting &gt; Apps &gt; AMG Lock &gt; Notifications mein ja kar on karein</string>
+
+    <!-- Completion pending card -->
+    <string name="completion_pending_title">Aakhri qist ada ho gayi — aik step baqi hai</string>
+    <string name="completion_pending_body">Device Owner hatna baqi hai — phone khula hua hai, koi lock nahi. Neeche wala button dabayein.</string>
+    <string name="completion_pending_button">Dobara Koshish Karein</string>
+    <string name="completion_pending_toast">Abhi Device Owner nahi hata — thori der baad dobara karein</string>
+    <string name="notif_completion_pending_title">Phone khul gaya hai — aik step baqi hai</string>
+    <string name="notif_completion_pending_body">Aakhri qist ada ho gayi. Device Owner hatane ke liye app kholein.</string>
 
     <!-- QR pairing scan (A-M13 / Wave 5.6) -->
     <string name="qr_scan_button">QR Scan Karein (dashboard se)</string>
@@ -55,6 +88,8 @@
     <string name="qr_scanned_ok">QR se code bhar diya gaya — ab Register dabayein</string>
     <string name="qr_invalid">Ye QR AMG ka pairing QR nahi lagta — dashboard se pairing QR dobara scan karein</string>
     <string name="qr_camera_denied">Camera ki ijazat ke baghair QR scan nahi ho sakta — Setting se camera on karein</string>
+    <string name="qr_url_locked">Is QR ka server URL istemal nahi ho sakta — phone ka server URL lock hai. Sirf pairing code bhar diya gaya hai.</string>
+    <string name="qr_url_not_allowed">Is QR ka server URL AMG ka nahi lagta — code bhar diya gaya hai, URL wahi rahe ga.</string>
 
     <!-- Setup / check-in errors — saaf lafzon mein (F-11) -->
     <string name="error_code_blank">Pehle pairing code likhein (8 harf wala code jo dashboard se mila)</string>
@@ -62,9 +97,10 @@
     <string name="error_no_internet">Internet nahi hai — Wi-Fi ya mobile data check karein, phir dobara karein</string>
     <string name="error_server_asleep">Server so raha hai — 1 minute baad dobara karein</string>
     <string name="error_bad_url">Server URL ghalat hai — https:// se shuru hona chahiye</string>
-    <string name="error_server">Server se jawab nahi aa raha — thori der baad dobara karein (%1$s)</string>
+    <string name="error_server">Server se jawab nahi aa raha — thori der baad dobara karein</string>
     <string name="error_not_registered_server">Ye phone server par registered nahi hai — dobara register karein</string>
-    <string name="error_reregister_blocked">Is phone ko dobara register karne ke liye dukaan se naya pairing code lein</string>
+    <string name="error_pairing_code_changed">Dukaan ne pairing code badal diya hai — naya code le kar dobara register karein</string>
+    <string name="error_reregister_blocked">Is phone ko dobara register karne ke liye dukaan se naya pairing code lein — dukaan dashboard mein code dobara banaye gi, phir naya code yahan likhein</string>
     <string name="error_too_many_attempts">Bahut zyada koshishen ho gayi hain — 1 ghante baad dobara koshish karein</string>
 
     <!-- Check-in status (F-31) -->
@@ -73,6 +109,7 @@
     <string name="check_status_server_slow">nakaam — server dair se jawab de raha tha</string>
     <string name="check_status_server_error">nakaam — server ka masla tha</string>
     <string name="check_status_not_registered">nakaam — server par register nahi hai</string>
+    <string name="check_status_code_changed">nakaam — dukaan ne pairing code badal diya hai</string>
     <string name="check_status_unknown">nakaam — server ka jawab samajh nahi aaya (purani halat barkarar hai)</string>
 
     <!-- Warning banner + battery (MainActivity) -->
@@ -91,12 +128,16 @@
     <string name="locked_due">Qist ki tareekh</string>
     <string name="locked_shop">Madad ke liye shop se rabta karein</string>
     <string name="lock_overdue_amount">ki qist baqi hai</string>
-    <string name="lock_installment_number">Qist #%1$d of %2$d</string>
+    <string name="lock_installment_number">Qist %1$d, kul %2$d</string>
     <string name="lock_overdue_count">qistein late hain</string>
     <string name="lock_days_overdue">din late</string>
     <string name="lock_total_remaining">Kul baqi raqam</string>
     <string name="lock_locked_since">se lock hai</string>
     <string name="lock_next_check">Agla check</string>
+    <string name="lock_next_check_soon">jald hi</string>
+    <string name="lock_local_deadline">Internet nahi hai aur qist ki tareekh guzar gayi — internet on karein ya dukaan se rabta karein.</string>
+    <string name="lock_owner_lost">Phone ki hifazat band hai — Device Owner khatam ho gaya. Dukaan se rabta karein.</string>
+    <string name="lock_storage_degraded">Phone ki hifazati storage khul nahi rahi — phone restart karein ya dukaan se rabta karein.</string>
     <string name="lock_checking">Check ho raha hai…</string>
     <string name="lock_check_ok">Check ho gaya — halat waisi hi hai</string>
     <string name="lock_check_no_internet">Internet nahi hai — thori der baad dobara karein</string>
@@ -110,6 +151,7 @@
     <string name="offline_code_hint2">Ye code shop se milta hai — shop ko call karein ya shop par jayein. Code sirf aik dafa chalta hai.</string>
     <string name="offline_unlock_button">Code Se Kholein</string>
     <string name="offline_code_wrong">Ghalat code — dobara likhein</string>
+    <string name="offline_code_locked_out">Bahut zyada ghalat koshishen — %1$d minute baad dobara karein</string>
     <string name="offline_code_blank">Pehle code likhein — khaali hai</string>
     <string name="offline_code_none">Koi offline code jari nahi hua — shop se code lein</string>
     <string name="offline_code_used">Ye code pehle istemal ho chuka hai</string>
@@ -128,7 +170,7 @@
 
     <!-- Completion screen -->
     <string name="completed_title">Mubarak! Phone Aap Ka Hai</string>
-    <string name="completed_body">Tamam qistein ada ho gayi hain. Ye app khud uninstall ho jaye gi aur phone hamesha ke liye khul jaye ga.</string>
+    <string name="completed_body">Tamam qistein ada ho gayi hain. Phone hamesha ke liye khul gaya hai. Is app ko hatane ke liye neeche "App Uninstall Karein" dabayein — app khud uninstall nahi hoti.</string>
     <string name="completed_note">Agar app uninstall na ho to shop se rabta karein — phone ab bilkul aap ka hai, is par koi lock nahi hai.</string>
     <string name="completed_verify_owner">Device Owner hat gaya</string>
     <string name="completed_verify_yes">Haan</string>
@@ -139,4 +181,8 @@
     <string name="completed_uninstall_button">App Uninstall Karein</string>
     <string name="completed_uninstall_launched">Uninstall ka prompt khul gaya — "Uninstall" dabayein. Agar prompt band ho jaye to dobara is button ko dabayein.</string>
     <string name="completed_uninstall_failed">Uninstall khud nahi khula — Setting &gt; Apps &gt; AMG Lock &gt; Uninstall karein, ya shop se madad lein.</string>
+    <string name="completed_reenroll_button">Dobara Register Karein (Nayi Qist)</string>
+    <string name="completed_reenroll_title">Dobara register karein?</string>
+    <string name="completed_reenroll_message">Is phone ko dobara qist par bechna hai to pehle isay QR se dobara Device Owner banana pare ga — completion par Device Owner hat chuka hota hai. Registration saaf kar dein?</string>
+    <string name="completed_reenroll_confirm">Haan, saaf karein</string>
 </resources>

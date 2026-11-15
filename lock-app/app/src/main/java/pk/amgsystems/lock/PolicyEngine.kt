@@ -52,6 +52,21 @@ object PolicyEngine {
         // v2.1 (PU-S9) — "Qist #3 of 6"; 0/-1 aaye to purani value rehne dein.
         result.installmentNumber?.takeIf { it > 0 }?.let { store.installmentNumber = it }
         result.installmentTotal?.takeIf { it > 0 }?.let { store.installmentTotal = it }
+        // v1.4.0 (J2-M14) — aakhri sync wala schedule + grace: offline
+        // deadline lock isi se chalta hai. Server bheje tab hi likhein.
+        result.scheduleJson?.let { store.scheduleJson = it }
+        result.graceDays?.let { store.graceDays = it }
+        // J2-m36: server kehta hai offline code pehle se istemal ho
+        // chuka (dashboard ne redeem kar diya) — phone mein pada code
+        // foran bekaar karein, warna 15 minute tak offline chal sakta hai.
+        if (result.offlineCodeUsed == true) {
+            OfflineCodeStore(context).clear()
+            Log.i(TAG, "Server reports offline code already used — local code invalidated")
+        }
+        // J2-m34 / J1-m54: kamyab check-in — nakaami ka hisaab saaf
+        // + re-register notification band (masla hal ho gaya).
+        store.consecutiveNotRegistered = 0
+        NotificationHelper.cancelReRegister(context)
         store.lastCheckInAt = System.currentTimeMillis()
         store.lastCheckInAttemptAt = System.currentTimeMillis()
         store.lastCheckInResult = result.instruction
@@ -70,6 +85,8 @@ object PolicyEngine {
                 if (previousState != LockState.LOCKED) {
                     store.lockedSinceAt = System.currentTimeMillis()
                 }
+                // Server ka lock local lock ki jagah le leta hai (J2-M14).
+                store.localLock = false
                 NotificationHelper.cancelWarning(context)
                 lockManager.applyLock()
             }
@@ -109,6 +126,44 @@ object PolicyEngine {
         store.lastCheckInAttemptAt = System.currentTimeMillis()
         store.lastCheckInStatus = status
         Log.w(TAG, "Check-in failed: $status — cached state kept")
+    }
+
+    /**
+     * Server ki mana karne wali check-in darj karein + zaroorat ho to
+     * dobara register ka prompt dikhayein (J2-m34 / J1-m54).
+     *  - `device_not_registered` lagatar 3 dafa aaye to persistent
+     *    notification (server wipe / account delete ke baad phone ko
+     *    dobara register karna parta hai — customer ko khud pata
+     *    nahi chalta, is liye khabar dena zaroori hai).
+     *  - `pairing_code_changed` (unified-4) ya `invalid_pairing_code`
+     *    (purana server) check-in par aaye to foran notification —
+     *    dukaan ne code badal diya hai, phone khamoshi se check-in
+     *    band kar deta hai, is liye 3 dafa ka intezar nahi.
+     * Kamyab check-in par counter + notification dono saaf ho jate
+     * hain (apply() mein).
+     */
+    fun recordCheckInServerError(context: Context, error: String) {
+        recordFailure(context, CheckInStatus.serverError(error))
+        val store = LockStateStore(context)
+        when (error) {
+            "device_not_registered" -> {
+                val count = store.consecutiveNotRegistered + 1
+                store.consecutiveNotRegistered = count
+                if (count >= NOT_REGISTERED_PROMPT_AFTER) {
+                    NotificationHelper.showReRegister(
+                        context,
+                        context.getString(R.string.notif_reregister_not_registered)
+                    )
+                }
+            }
+            "pairing_code_changed", "invalid_pairing_code" -> {
+                NotificationHelper.showReRegister(
+                    context,
+                    context.getString(R.string.notif_reregister_code_changed)
+                )
+            }
+            else -> Unit
+        }
     }
 
     /** Network error kind se check-in status code (sab callers aik hi mapping istemal karein). */
@@ -187,4 +242,7 @@ object PolicyEngine {
     }
 
     private const val TAG = "PolicyEngine"
+
+    /** Lagatar kitni `device_not_registered` nakaamiyon par prompt dikhe (J2-m34). */
+    private const val NOT_REGISTERED_PROMPT_AFTER = 3
 }

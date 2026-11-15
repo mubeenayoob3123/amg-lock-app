@@ -13,11 +13,17 @@ import android.provider.Settings
  * human-readable model name. The shop records the real IMEI separately
  * in the dashboard's Stock screen — the two are linked by the account,
  * not by this value.
+ *
+ * J1-m62: is value ko UI mein kabhi "IMEI" NAHI kehte — ye ANDROID_ID
+ * hai (factory reset par badal jati hai, IMEI ki tarah mustaqil nahi).
+ * Server ko bhejne wale JSON field ka naam ("imei") purana contract
+ * hai, is liye wire par wahi rehta hai — sirf naam badla hai, field nahi.
  */
 object DeviceInfo {
 
+    /** Phone ki ANDROID_ID (UI mein "Device ID" ke naam se dikhani hai). */
     @SuppressLint("HardwareIds")
-    fun imei(context: Context): String {
+    fun androidId(context: Context): String {
         return Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ANDROID_ID

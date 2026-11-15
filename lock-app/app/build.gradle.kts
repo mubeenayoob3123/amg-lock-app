@@ -23,8 +23,11 @@ android {
         applicationId = "pk.amgsystems.lock"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.3.0"
+        // v1.4.0 (code 6): audit round 2 — local deadline lock, reset PIN
+        // throttling + server URL lock, Safe Mode / USB debugging block,
+        // fail-closed storage, FCM typed pushes, direct-boot lock.
+        versionCode = 6
+        versionName = "1.4.0"
         // Build flag: FCM sirf tab on jab google-services.json build ke
         // waqt maujood thi. FcmManager is ke saath runtime check bhi
         // karta hai (FirebaseApp init hua ya nahi).

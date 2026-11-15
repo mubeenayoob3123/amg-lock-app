@@ -1,6 +1,7 @@
 package pk.amgsystems.lock
 
 import android.app.Activity
+import android.app.KeyguardManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -9,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.UserManager
 import android.util.Log
+import androidx.work.WorkManager
 
 /**
  * Everything that actually locks / unlocks the phone.
@@ -35,14 +37,20 @@ import android.util.Log
  *    background uninstall (A-M7 / F-32).
  *
  * HONEST LIMITS (Android rules, not app bugs — also in README):
- *  - Safe Mode: Android does NOT let any app block booting into Safe
- *    Mode. In Safe Mode third-party apps (including this one) do not
- *    run, so the lock screen is not shown — BUT the Device Owner
- *    role survives Safe Mode, and on the next normal boot the lock
- *    comes straight back. A forced factory reset is blocked from
- *    Settings; a reset from recovery still wipes the phone — then
- *    Factory Reset Protection (FRP) + the shop's written agreement
- *    are the protection, and the phone re-enrolls on setup.
+ *  - Safe Mode (v1.4.0 se BLOCKED — J2-M16): Device Owner restriction
+ *    DISALLOW_SAFE_BOOT Safe Mode boot rokta hai. (Pehle docs mein
+ *    ghalat likha tha ke Android Safe Mode block nahi karne deta —
+ *    ye restriction Device Owner ke liye maujood hai.) Kuch OEM
+ *    hardware-key boot path par isay na bhi manein to Device Owner
+ *    role Safe Mode mein bhi rehta hai aur normal boot par lock
+ *    wapas aa jata hai — test phone par verify karein.
+ *  - USB debugging (v1.4.0 se BLOCKED — J2-M16):
+ *    DISALLOW_DEBUGGING_FEATURES adb samait debugging band kar deta
+ *    hai. NOTE: policies lagne ke baad adb bhi band ho jata hai —
+ *    ye hifazat hai, bug nahi (adb test path sirf setup ke liye hai).
+ *  - A forced factory reset from recovery still wipes the phone —
+ *    then Factory Reset Protection (FRP) + the shop's written
+ *    agreement are the protection, and the phone re-enrolls on setup.
  *  - An expert who flashes firmware can bypass any software lock.
  *    This stops ordinary customers, not a determined technician.
  */
@@ -76,6 +84,13 @@ class LockManager(private val context: Context) {
         dpm.addUserRestriction(admin, UserManager.DISALLOW_ADD_USER)
         dpm.addUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
         dpm.addUserRestriction(admin, UserManager.DISALLOW_CONFIG_TETHERING)
+        // J2-M16: Safe Mode boot + USB debugging bhi block — dono Device
+        // Owner restriction hain (pehle docs mein ghalat likha tha ke
+        // Safe Mode block nahi ho sakta). NOTE: is ke baad adb bhi band
+        // ho jata hai — test ke liye adb sirf policies lagne se pehle
+        // istemal ho sakta hai (setup ke waqt).
+        dpm.addUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT)
+        dpm.addUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES)
         // A-M6: customer ka apna screen lock (PIN / pattern / fingerprint)
         // band NAHI karte. LockActivity showWhenLocked / turnScreenOn se
         // keyguard ke oopar dikhti hai, is liye keyguard band karne ki
@@ -116,6 +131,7 @@ class LockManager(private val context: Context) {
         if (isDeviceOwner()) {
             dpm.setStatusBarDisabled(admin, true)
         }
+        BootState.sync(context)
         val intent = Intent(context, LockActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
@@ -129,15 +145,53 @@ class LockManager(private val context: Context) {
     }
 
     /**
+     * Local deadline lock (J2-M14): phone khud offline lock lagata hai
+     * (aakhri sync wali deadline guzar gayi). Server lock jaisa hi hai,
+     * farq sirf itna hai ke lock screen offline wala paigham dikhati
+     * hai (localLock flag) — aur agli kamyab check-in (stay_unlocked /
+     * warn) isay foran khol deti hai.
+     */
+    fun applyLocalDeadlineLock() {
+        if (store.lockState == LockState.LOCKED) {
+            store.localLock = true
+            return
+        }
+        store.lockedSinceAt = System.currentTimeMillis()
+        applyLock()
+        store.localLock = true
+        Log.w(TAG, "LOCAL deadline lock applied (offline past due + grace + 48h buffer)")
+    }
+
+    /**
      * Fallback when lock-task pinning fails (A-M12): lock the device
      * screen immediately via DevicePolicyManager. The lock screen
      * (LockActivity, showWhenLocked) is what the customer sees when
      * the phone wakes, so the phone is still protected even though
      * it is not pinned. No-op (with a log) if not Device Owner.
+     *
+     * J2-m31: pehle check karein ke keyguard mehfooz hai (PIN /
+     * pattern / fingerprint set hai) — baghair secure keyguard ke
+     * lockNow ka koi faida nahi (phone jagte hi khul jata hai, Home
+     * band nahi hota). Keyguard mehfooz na ho to lock-task mode
+     * dobara lagane ki koshish karein (activity mile to), warna
+     * zor se log karein ke phone mehfooz NAHI hai.
      */
-    fun lockNow() {
+    fun lockNow(activity: Activity? = null) {
         if (!isDeviceOwner()) {
             Log.w(TAG, "lockNow() fallback skipped — not Device Owner")
+            return
+        }
+        val keyguardManager =
+            context.getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+        if (!keyguardManager.isKeyguardSecure) {
+            Log.w(TAG, "lockNow() skipped — keyguard is NOT secure, falling back to lock-task mode")
+            if (activity != null) {
+                runCatching { activity.startLockTask() }
+                    .onFailure { Log.e(TAG, "lock-task fallback ALSO failed — phone is NOT protected (keyguard not secure)", it) }
+                    .onSuccess { Log.i(TAG, "lock-task fallback applied (keyguard not secure)") }
+            } else {
+                Log.e(TAG, "No activity for lock-task fallback — phone is NOT protected (keyguard not secure)")
+            }
             return
         }
         runCatching { dpm.lockNow() }
@@ -156,10 +210,12 @@ class LockManager(private val context: Context) {
      */
     fun applyUnlock() {
         store.lockState = LockState.ACTIVE
+        store.localLock = false
         if (isDeviceOwner()) {
             dpm.setStatusBarDisabled(admin, false)
         }
         stopLockTaskIfPossible()
+        BootState.sync(context)
         // LockActivity (if open) finishes itself when it sees ACTIVE.
         Log.i(TAG, "Phone UNLOCKED")
     }
@@ -174,6 +230,8 @@ class LockManager(private val context: Context) {
     /** Warning state: phone still usable, warning banner is shown. */
     fun applyWarning() {
         store.lockState = LockState.WARNING
+        store.localLock = false
+        BootState.sync(context)
         Log.i(TAG, "WARNING shown (grace period running)")
     }
 
@@ -181,17 +239,41 @@ class LockManager(private val context: Context) {
      * Final payment: permanent unlock.
      * Order matters:
      *  1. Remove every restriction + clear the Device Owner role.
-     *  2. State COMPLETED rakhein — state tab tak NAHI mitate jab tak
-     *     uninstall waqai na ho jaye (A-M7: pehle state mit jati thi
-     *     aur aik bekaar app reh jati thi).
+     *  2. State COMPLETED SIRF tab rakhein jab Device Owner hatne ki
+     *     TASDEEQ ho jaye (J2-m35 — pehle tasdeeq ke baghair COMPLETED
+     *     likha jata tha, phir worker band ho jata tha aur retry ka
+     *     koi rasta nahi rehta tha). Tasdeeq na ho to phone khul to
+     *     jata hai (qist poori ada hai) lekin completionPending lag
+     *     jata hai — agli check-in dobara koshish kare gi, aur
+     *     MainActivity mein retry button dikhta hai.
      *  3. Completion screen + notification: uninstall sirf foreground
      *     CompletionActivity se hota hai, aur us ki tasdeeq hoti hai.
      *     Background se ACTION_DELETE Android 10+ par band hai.
+     *  4. COMPLETED hone par background workers band ho jate hain
+     *     (J1-p15 — 15-minute worker completion ke baad hamesha
+     *     chalta rehta tha).
      */
     fun applyPermanentUnlock() {
         val cleared = clearDeviceOwnerAndRestrictions()
+        if (!cleared) {
+            // Device Owner abhi hata nahi — COMPLETED NAHI likhte.
+            // Phone phir bhi khul jata hai (aakhri qist ada ho gayi),
+            // lekin completion adhoori rehti hai (retry agli check-in par).
+            applyUnlock()
+            store.completionPending = true
+            NotificationHelper.showCompletionPending(context)
+            Log.w(TAG, "Permanent unlock: Device Owner NOT cleared — completion pending, will retry on next check-in")
+            return
+        }
+        store.completionPending = false
         store.lockState = LockState.COMPLETED
+        store.localLock = false
         Log.i(TAG, "Permanent unlock — Device Owner cleared: $cleared")
+        // J1-p15: completion ke baad background check-in band.
+        runCatching { WorkManager.getInstance(context).cancelUniqueWork(CheckInWorker.WORK_NAME) }
+        DeadlineCheckWorker.cancel(context)
+        NotificationHelper.cancelCompletionPending(context)
+        BootState.sync(context)
         // Completion screen kholne ki koshish (foreground se chalta hai;
         // background worker se Android rok deta hai — notification fallback hai).
         NotificationHelper.showCompletion(context)
@@ -203,6 +285,19 @@ class LockManager(private val context: Context) {
         }.onFailure {
             Log.w(TAG, "Could not launch CompletionActivity from background (notification is the fallback)", it)
         }
+    }
+
+    /**
+     * Completion dobara koshish karein (J2-m35 — MainActivity ke
+     * pending card se). Returns true agar is dafa Device Owner hat
+     * gaya ho (tab COMPLETED ho jata hai).
+     */
+    fun retryCompletion(): Boolean {
+        val cleared = clearDeviceOwnerAndRestrictions()
+        if (cleared) {
+            applyPermanentUnlock()
+        }
+        return cleared
     }
 
     /**
@@ -218,6 +313,9 @@ class LockManager(private val context: Context) {
         runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_ADD_USER) }
         runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES) }
         runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_CONFIG_TETHERING) }
+        // J2-M16 wali pabandiyan bhi hatayein (completion par phone aazaad hai).
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_SAFE_BOOT) }
+        runCatching { dpm.clearUserRestriction(admin, UserManager.DISALLOW_DEBUGGING_FEATURES) }
         runCatching { dpm.setKeyguardDisabled(admin, false) }
         runCatching { dpm.setScreenCaptureDisabled(admin, false) }
         runCatching { dpm.setLockTaskPackages(admin, emptyArray()) }

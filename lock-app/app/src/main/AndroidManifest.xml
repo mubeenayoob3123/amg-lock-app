@@ -15,10 +15,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- J1-p09: FOREGROUND_SERVICE rehta hai (expedited check-in work —
+         J1-m73 — ko Android 10-12 par foreground service chahiye hoti
+         hai). FOREGROUND_SERVICE_DATA_SYNC aur REQUEST_INSTALL_PACKAGES
+         hata diye gaye (istemal nahi hote). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.CAMERA" />
     <!-- Warning + completion notifications (Android 13+ runtime permission, maangi MainActivity mein jati hai). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -65,8 +67,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.HOME" />
-                <category android:name="android.intent.category.DEFAULT" />
+                <!-- J2-m33: CATEGORY_HOME hata diya — ye app launcher nahi hai. -->
             </intent-filter>
         </activity>
 
@@ -112,9 +113,14 @@
             </intent-filter>
         </service>
 
-        <!-- Re-apply the lock state after every reboot. -->
+        <!-- Re-apply the lock state after every reboot. J2-p18: receiver
+             directBootAware hai — phone khule (PIN se pehle) hi lock
+             dobara lag sake. Locked boot par sirf BootState (device-
+             protected storage) parhte hain; encrypted prefs wahan
+             dastiyab nahi hote. -->
         <receiver
             android:name=".BootReceiver"
+            android:directBootAware="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

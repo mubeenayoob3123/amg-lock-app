@@ -88,9 +88,38 @@ object QrProvisioning {
     const val KEY_PAIRING_CODE = "pairing_code"
 
     /**
+     * Server URL allowlist (J2-m30): QR ya provisioning extras se
+     * sirf ye URLs qabool hain — warna phone ko nakli server ki taraf
+     * moda ja sakta hai (jo hamesha "stay_unlocked" kahe).
+     *  - https lazmi hai.
+     *  - Host ya to known Render host ho, ya *.amgsystems.pk ho
+     *    (mustaqbil ka paid domain), ya phone par pehle se configured
+     *    (registered) URL ka host ho.
+     * Khaali URL theek hai (code-only QR — URL pehle se bhara hota hai).
+     */
+    fun isAllowedServerUrl(context: Context, url: String): Boolean {
+        if (url.isBlank()) return true
+        val parsed = runCatching { java.net.URL(url.trim()) }.getOrNull() ?: return false
+        if (parsed.protocol != "https") return false
+        val host = parsed.host?.lowercase().orEmpty()
+        if (host.isBlank()) return false
+        if (host == KNOWN_RENDER_HOST) return true
+        if (host.endsWith(AMG_DOMAIN_SUFFIX)) return true
+        // Pehle se configured URL (registered phone ka trusted server).
+        val configuredHost = runCatching {
+            java.net.URL(LockStateStore(context).serverUrl).host?.lowercase()
+        }.getOrNull()
+        return configuredHost != null && host == configuredHost
+    }
+
+    /**
      * Provisioning ke waqt mile admin extras ko encrypted store mein
      * likhein (Setup pre-fill ke liye). Bundle na ho to kuch nahi hota
      * — shop Setup haath se bhare gi. Code ki value kabhi log mein nahi.
+     * Server URL allowlist se guzarta hai (J2-m30) — ghalat URL ho to
+     * wo field chhor di jati hai (default URL rehta hai). Fresh
+     * provisioning URL lock bhi khol deti hai (J2-M15c) — dobara
+     * provision hona hi URL badalne ka tareeqa hai.
      */
     fun applyProvisioningExtras(context: Context, intent: Intent) {
         val bundle = intent.getBundleExtra(
@@ -103,8 +132,14 @@ object QrProvisioning {
         var applied = 0
         val url = bundle.getString(KEY_SERVER_URL, "").orEmpty().trim()
         if (url.isNotBlank()) {
-            store.serverUrl = url
-            applied++
+            if (isAllowedServerUrl(context, url)) {
+                store.serverUrl = url
+                // Fresh provisioning — URL lock khol dein (naya URL jaiz hai).
+                store.serverUrlLocked = false
+                applied++
+            } else {
+                Log.w(TAG, "Provisioning extras server URL refused (not on allowlist) — keeping default")
+            }
         }
         val code = bundle.getString(KEY_PAIRING_CODE, "").orEmpty().trim().uppercase()
         if (code.isNotBlank()) {
@@ -115,4 +150,10 @@ object QrProvisioning {
     }
 
     private const val TAG = "QrProvisioning"
+
+    /** Live test server ka host (LockStateStore.DEFAULT_SERVER_URL se). */
+    private const val KNOWN_RENDER_HOST = "amg-device-api.onrender.com"
+
+    /** Mustaqbil ka paid domain — is ke neeche koi bhi subdomain jaiz hai. */
+    private const val AMG_DOMAIN_SUFFIX = ".amgsystems.pk"
 }

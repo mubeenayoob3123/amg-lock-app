@@ -6,6 +6,7 @@ import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 
@@ -29,7 +30,12 @@ import androidx.work.WorkerParameters
  * FCM push (Wave 5.4): server jab unlock/completed ki push bhejta hai
  * to AmgFirebaseMessagingService isi worker ko one-shot chalata hai
  * (enqueueImmediate) — payment ke baad phone foran khul jata hai,
- * 15 minute ka intezar nahi hota.
+ * 15 minute ka intezar nahi hota. Push wali check-in EXPEDITED hai
+ * (J1-m73) — Doze isay rok nahi sakta.
+ *
+ * Har tick par local deadline bhi check hoti hai (J2-M14) — network
+ * ho to check-in faisla karta hai, na ho to deadline worker
+ * (DeadlineCheckWorker, bina network constraint ke) ye kaam karta hai.
  */
 class CheckInWorker(
     context: Context,
@@ -46,6 +52,13 @@ class CheckInWorker(
             Log.d(TAG, "Already completed — skipping check-in")
             return Result.success()
         }
+        // J2-M14: check-in se pehle local deadline bhi dekh lein (agar
+        // deadline guzar gayi to phone khud lock ho jaye — check-in
+        // ka jawab aaye to PolicyEngine us ke mutabiq theek kar de ga).
+        LocalDeadlineLock.evaluate(applicationContext)
+        // J1-m58: FCM token fetch pehle nakaam hua ho to retry ka waqt
+        // ho to dobara koshish karein (network wali tick par).
+        FcmManager.maybeRetryTokenFetch(applicationContext)
         when (val outcome = ServerApi(applicationContext).checkIn()) {
             is ServerApi.CheckInOutcome.Success -> {
                 PolicyEngine.apply(applicationContext, outcome.result)
@@ -53,10 +66,9 @@ class CheckInWorker(
             is ServerApi.CheckInOutcome.ServerError -> {
                 // Server ne jawab diya magar mana kar diya (masalan
                 // device_not_registered) — ye "internet nahi" NAHI hai (A-M2).
-                PolicyEngine.recordFailure(
-                    applicationContext,
-                    PolicyEngine.CheckInStatus.serverError(outcome.error)
-                )
+                // recordCheckInServerError lagatar nakaami par dobara
+                // register ka prompt bhi dikhata hai (J2-m34 / J1-m54).
+                PolicyEngine.recordCheckInServerError(applicationContext, outcome.error)
             }
             is ServerApi.CheckInOutcome.NetworkError -> {
                 PolicyEngine.recordFailure(
@@ -77,6 +89,12 @@ class CheckInWorker(
          * One-shot work hai — periodic 15-minute schedule ko nahi
          * chheerta. doWork() ke andar hi unregistered/completed wale
          * guard hain, is liye yahan se seedha enqueue karna mehfooz hai.
+         *
+         * J1-m73: EXPEDITED hai — aam work ki tarah Doze isay ghanton
+         * rok nahi sakta. Quota khatam ho to aam work ki tarah chalta
+         * hai (RUN_AS_NON_EXPEDITED_WORK_REQUEST). Is ke liye manifest
+         * mein FOREGROUND_SERVICE permission zaroori hai (API 26–30
+         * par expedited work foreground service se chalta hai).
          */
         fun enqueueImmediate(context: Context) {
             val request = OneTimeWorkRequestBuilder<CheckInWorker>()
@@ -85,6 +103,7 @@ class CheckInWorker(
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueue(request)
         }

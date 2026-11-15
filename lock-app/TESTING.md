@@ -54,18 +54,25 @@
 - **Karein:** Settings → Reset → Factory reset ki koshish karein.
 - **Umeed:** Reset option **block** ho ya Device Owner ki wajah se na ho.
 - **Karein:** Phone restart karein (locked halat mein).
-- **Umeed:** Boot hote hi **lock screen wapas** aaye.
+- **Umeed:** Boot hote hi **lock screen wapas** aaye (PIN se pehle bhi —
+  locked boot par lock dobara lag jata hai, v1.4.0).
 - **Karein:** Safe Mode mein boot karein (agar phone support karta hai).
-- **Umeed (honest):** Safe Mode mein lock screen **nahi** dikhe gi (Android ka rule),
-  lekin normal boot par lock **wapas** aaye ga — Device Owner role rehta hai.
+- **Umeed (v1.4.0):** Safe Mode **block** hai (DISALLOW_SAFE_BOOT) — phone
+  Safe Mode mein boot nahi hoga, normal boot par lock waisa hi rehta hai.
+- **Note (v1.4.0):** Policies lagne ke baad **USB debugging / adb bhi band**
+  ho jata hai (DISALLOW_DEBUGGING_FEATURES) — yehi hifazat hai. adb /
+  logcat sirf **policies lagne se pehle** (setup ke waqt) istemal hota hai.
 
 ## Scenario 6 — Aakhri qist (permanent unlock)
 
 - **Karein:** Dummy account ki **tamam** qistein ada karein (ya early payoff).
 - **Umeed:** Phone **hamesha ke liye khul** jaye, "Mubarak! Phone Aap Ka Hai"
-  dikhe, Device Owner role khatam ho, aur **app khud uninstall** ho jaye.
-- **Check karein:** Phone par app ka icon **ghaib** ho; Settings → Apps mein
-  AMG Lock **na** ho; phone ko reset karke check karein ke koi lock nahi.
+  dikhe, Device Owner role khatam ho. **App khud uninstall NAHI hoti** —
+  customer ko "App Uninstall Karein" button dabana parta hai (phir Android
+  ka uninstall prompt khulta hai).
+- **Check karein:** Button dabane ke baad phone par app ka icon **ghaib** ho;
+  Settings → Apps mein AMG Lock **na** ho; phone ko reset karke check karein
+  ke koi lock nahi.
 - **Check karein:** Dashboard mein account **Completed / Clear** + clearance receipt.
 
 ## Scenario 7 — Partial payment (aadhi qist)
@@ -81,6 +88,8 @@
 - **Karein:** Locked phone ka internet band karein, 15 minute wait karein.
 - **Umeed:** Phone **locked hi rahe** — internet band karke unlock nahi hota,
   kyunki phone purani halat par rehta hai.
+- **Lambi muddat (v1.4.0):** Internet band rakhna ab hamesha ke liye bachat
+  nahi hai — dekhein Scenario 12 (local deadline lock).
 
 ## Scenario 9 — QR pairing scan (Wave 5.6 / A-M13)
 
@@ -97,7 +106,9 @@
 ## Scenario 10 — FCM push: payment ke baad foran unlock (Wave 5.4)
 
 > Sirf tab jab Firebase setup ho chuka ho (google-services.json +
-> FCM_SERVER_KEY Render mein — dekhein `hidden_files/fcm-setup-guide.md`).
+> FCM service account Render mein — `FCM_SERVICE_ACCOUNT_JSON` env var,
+> dekhein `hidden_files/fcm-setup-guide.md`). Purana `FCM_SERVER_KEY`
+> ab kaam nahi karta (Google ne legacy FCM API June 2024 mein band kar di).
 > Setup ke baghair ye test NAHI chalega — tab Scenario 3 wala 15-minute
 > unlock hi umeed hai.
 
@@ -118,6 +129,43 @@
   bhara** ho (server URL + pairing code) — sirf Register dabana pare.
 - **Baghair extras:** Extras ke baghair provision karein.
 - **Umeed:** Setup khaali khule (server URL default), haath se bharna pare.
+
+## Scenario 12 — Local deadline lock: offline reh kar lock se bachna (v1.4.0)
+
+> Naya rule (Mubeen ka faisla, V2 §1 mein tabdeeli): phone ke paas aakhri
+> sync wala schedule hai — agar phone **due date + grace + 48 ghante**
+> tak offline rahe to wo **khud lock** ho jata hai, bina server se pooche.
+> 48 ghante ka buffer genuine outage ke liye hai (gaaon / recharge khatam).
+
+- **Karein:** Dummy account ki qist due karwayein (due date guzar jaye,
+  payment na karein) → phone ka internet band karein → 48 ghante + grace
+  guzarne dein (test ke liye grace chhota rakhein, ya phone ki tareekh
+  aage kar ke check karein — waqt badalna sirf test ke liye hai).
+- **Umeed:** Phone **khud lock** ho jaye, lock screen par offline wala
+  paigham dikhe: "Internet nahi hai aur qist ki tareekh guzar gayi".
+- **Karein:** Internet on karein → dashboard mein qist ada karein →
+  "Abhi Check Karein" dabayein.
+- **Umeed:** Phone **foran khul** jaye (kamyab check-in local lock saaf
+  kar deta hai).
+- **Karein:** Aisi account jis ki koi qist overdue nahi, us ka phone
+  internet band karke chhor dein.
+- **Umeed:** Phone **kabhi lock na ho** — schedule mein kuch overdue nahi
+  to local lock nahi lagta.
+
+## Scenario 13 — Factory reset ke baad dobara enroll (J1-m52)
+
+> Factory reset Device Owner mita deta hai. Phone dobara enroll karne ke
+> liye **dashboard se pairing code dobara banana (regenerate)** zaroori hai
+> — purana code kaam nahi kare ga (re-register guard).
+
+- **Karein:** Phone factory reset karein → QR se dobara provision karein →
+  **purana** pairing code likh kar Register karein.
+- **Umeed:** Register **na ho** — saaf paigham dikhe: "dobara register
+  karne ke liye dukaan se naya pairing code lein".
+- **Karein:** Dashboard mein account ka pairing code **regenerate** karein
+  → **naya** code phone par likh kar Register karein.
+- **Umeed:** Register ho jaye, status ACTIVE. Purana phone ka record
+  dashboard mein wahi account dikhaye (naya account nahi banta).
 
 ---
 

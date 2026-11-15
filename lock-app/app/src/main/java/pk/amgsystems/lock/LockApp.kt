@@ -31,6 +31,14 @@ class LockApp : Application() {
     }
 
     private fun scheduleCheckIn() {
+        // J1-p15: completion ke baad workers band rehte hain — app
+        // dobara khulne par bhi schedule nahi hote.
+        val store = LockStateStore(this)
+        if (store.lockState == LockState.COMPLETED) {
+            WorkManager.getInstance(this).cancelUniqueWork(CheckInWorker.WORK_NAME)
+            DeadlineCheckWorker.cancel(this)
+            return
+        }
         val request = PeriodicWorkRequestBuilder<CheckInWorker>(15, TimeUnit.MINUTES)
             .setConstraints(
                 Constraints.Builder()
@@ -43,5 +51,7 @@ class LockApp : Application() {
             ExistingPeriodicWorkPolicy.KEEP,
             request
         )
+        // J2-M14: offline deadline check (bina network constraint ke).
+        DeadlineCheckWorker.schedule(this)
     }
 }

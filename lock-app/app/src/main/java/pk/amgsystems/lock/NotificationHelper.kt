@@ -28,6 +28,8 @@ object NotificationHelper {
     private const val CHANNEL_COMPLETION = "amg_completion"
     private const val NOTIF_WARNING_ID = 1001
     private const val NOTIF_COMPLETION_ID = 1002
+    private const val NOTIF_REREGISTER_ID = 1003
+    private const val NOTIF_COMPLETION_PENDING_ID = 1004
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -59,6 +61,16 @@ object NotificationHelper {
             else -> store.remainingAmount
         }
         val body = buildString {
+            // J1-m60: kaun si qist late hai (lock screen ki tarah).
+            if (store.installmentNumber > 0 && store.installmentTotal > 0) {
+                append(
+                    context.getString(
+                        R.string.lock_installment_number,
+                        store.installmentNumber, store.installmentTotal
+                    )
+                )
+                append(". ")
+            }
             if (amount > 0) append("Rs $amount ki qist baqi hai. ")
             if (store.graceDaysLeft > 0) {
                 append("Grace period mein ${store.graceDaysLeft} din baqi hain — ")
@@ -93,6 +105,78 @@ object NotificationHelper {
         }
     }
 
+    /**
+     * Dobara register ki notification (J2-m34 / J1-m54) — phone server
+     * par registered nahi raha, ya dukaan ne pairing code badal diya
+     * hai. Dabane par MainActivity khulti hai (wahan dobara register
+     * ka button + hidayat hoti hai). Kamyab check-in par band ho jati
+     * hai (PolicyEngine.cancelReRegister). setOnlyAlertOnce — har
+     * 15-minute tick par dobara awaaz na aaye.
+     */
+    fun showReRegister(context: Context, message: String) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_WARNING)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(context.getString(R.string.notif_reregister_title))
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(pending)
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(context).notify(NOTIF_REREGISTER_ID, notification)
+        }
+    }
+
+    fun cancelReRegister(context: Context) {
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(NOTIF_REREGISTER_ID)
+        }
+    }
+
+    /**
+     * Completion adhoori hai (J2-m35) — aakhri qist ada ho gayi lekin
+     * Device Owner hatna baqi hai. Dabane par MainActivity khulti hai
+     * (wahan retry button hota hai).
+     */
+    fun showCompletionPending(context: Context) {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val pending = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_COMPLETION)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(context.getString(R.string.notif_completion_pending_title))
+            .setContentText(context.getString(R.string.notif_completion_pending_body))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.notif_completion_pending_body)))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(pending)
+            .build()
+        runCatching {
+            NotificationManagerCompat.from(context).notify(NOTIF_COMPLETION_PENDING_ID, notification)
+        }
+    }
+
+    fun cancelCompletionPending(context: Context) {
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(NOTIF_COMPLETION_PENDING_ID)
+        }
+    }
+
     /** Completion notification — dabane par CompletionActivity khulti hai. */
     fun showCompletion(context: Context) {
         val intent = Intent(context, CompletionActivity::class.java).apply {
@@ -113,6 +197,13 @@ object NotificationHelper {
             .build()
         runCatching {
             NotificationManagerCompat.from(context).notify(NOTIF_COMPLETION_ID, notification)
+        }
+    }
+
+    /** Completion notification band karein (J1-p15) — CompletionActivity khulne par. */
+    fun cancelCompletion(context: Context) {
+        runCatching {
+            NotificationManagerCompat.from(context).cancel(NOTIF_COMPLETION_ID)
         }
     }
 }

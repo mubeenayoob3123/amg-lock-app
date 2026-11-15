@@ -59,7 +59,7 @@ class OfflineCodeStore(context: Context) {
         if (plainCode.isBlank()) return
         val code = plainCode.trim().uppercase()
         val used = usedHashes()
-        if (used.contains(saltedHash(code)) || used.contains(legacyHash(code))) return // pehle istemal ho chuka — dobara store nahi
+        if (allHashes(code).any { it in used }) return // pehle istemal ho chuka — dobara store nahi
         prefs.edit().putString(KEY_HASH, saltedHash(code)).apply()
     }
 
@@ -70,7 +70,7 @@ class OfflineCodeStore(context: Context) {
         if (typedCode.isBlank()) return false
         val code = typedCode.trim().uppercase()
         val used = usedHashes()
-        return used.contains(saltedHash(code)) || used.contains(legacyHash(code))
+        return allHashes(code).any { it in used }
     }
 
     /**
@@ -81,23 +81,71 @@ class OfflineCodeStore(context: Context) {
      *
      * Purana (unsalted) hash bhi check hota hai — sirf is liye ke
      * update se pehle jari code aik dafa chal sake (salt migration).
+     * Purana (sign-extended) hex bhi check hota hai — v1.3.0 tak hash
+     * usi ghalat hex mein likha jata tha (J2-p14 migration).
+     *
+     * Burn SYNCHRONOUS hai (J2-p15, commit): apply() ke saath app
+     * crash ho to jala hua code dobara zinda ho sakta tha.
      */
     fun verifyAndBurn(typedCode: String): Boolean {
         val stored = prefs.getString(KEY_HASH, null) ?: return false
         if (typedCode.isBlank()) return false
         val code = typedCode.trim().uppercase()
-        val salted = saltedHash(code)
-        val legacy = legacyHash(code)
-        if (salted != stored && legacy != stored) return false
+        if (allHashes(code).none { it == stored }) return false
         // Burn it: this code can never be used again.
         val used = usedHashes().toMutableSet()
-        used.add(salted)
-        used.add(legacy)
-        prefs.edit()
+        used.addAll(allHashes(code))
+        val committed = prefs.edit()
             .remove(KEY_HASH)
             .putStringSet(KEY_USED_HASHES, used)
-            .apply()
+            .commit()
+        if (!committed) {
+            android.util.Log.e(TAG, "Code burn commit FAILED — code may still be usable, treating as NOT burned")
+            return false
+        }
         return true
+    }
+
+    // --- Offline-code koshishon ki rok (J2-m32) ---
+
+    /** Ghalat code ki lagatar koshishen — 5 par 15 minute ki rok. */
+    private var codeAttempts: Int
+        get() = prefs.getInt(KEY_CODE_ATTEMPTS, 0)
+        set(value) = prefs.edit().putInt(KEY_CODE_ATTEMPTS, value).apply()
+
+    /** Code entry kab tak band hai (millis). 0 = koi rok nahi. */
+    private var codeLockedUntil: Long
+        get() = prefs.getLong(KEY_CODE_LOCKED_UNTIL, 0L)
+        set(value) = prefs.edit().putLong(KEY_CODE_LOCKED_UNTIL, value).apply()
+
+    /** Kya code likhna abhi band hai (5 ghalat koshishon ke baad)? Restart ke baad bhi band rehta hai. */
+    fun isCodeLockedOut(): Boolean = System.currentTimeMillis() < codeLockedUntil
+
+    /** Rok khatam hone mein kitne minute baqi hain (kam se kam 1). */
+    fun codeLockoutMinutesLeft(): Long {
+        val left = codeLockedUntil - System.currentTimeMillis()
+        return if (left <= 0L) 0L else (left + 59_999L) / 60_000L
+    }
+
+    /**
+     * Ghalat code ki koshish darj karein. Returns true agar is
+     * koshish se 15 minute ki rok lag gayi ho.
+     */
+    fun noteWrongCodeAttempt(): Boolean {
+        val attempts = codeAttempts + 1
+        if (attempts >= MAX_CODE_ATTEMPTS) {
+            codeAttempts = 0
+            codeLockedUntil = System.currentTimeMillis() + CODE_LOCKOUT_MS
+            return true
+        }
+        codeAttempts = attempts
+        return false
+    }
+
+    /** Sahi code ke baad koshishon ka hisaab saaf karein. */
+    fun resetCodeAttempts() {
+        codeAttempts = 0
+        codeLockedUntil = 0L
     }
 
     /** Current (unused) code bhool jayein — used-code record rehta hai. */
@@ -156,7 +204,7 @@ class OfflineCodeStore(context: Context) {
         if (!existing.isNullOrBlank()) return existing
         val bytes = ByteArray(32)
         SecureRandom().nextBytes(bytes)
-        val hex = bytes.joinToString("") { "%02x".format(it) }
+        val hex = toHex(bytes)
         prefs.edit().putString(KEY_SALT, hex).apply()
         return hex
     }
@@ -167,12 +215,48 @@ class OfflineCodeStore(context: Context) {
     /** Purana hash (salt se pehle): SHA-256(code) — sirf migration ke liye. */
     private fun legacyHash(code: String): String = sha256(code)
 
-    private fun sha256(input: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
+    /**
+     * Is code ke tamam mumkin hash forms — naya hex + purana
+     * (sign-extended) hex, salted + unsalted. Sirf check karne ke
+     * liye hai, taake v1.3.0 tak jari code update ke baad bhi aik
+     * dafa chale (J2-p14 migration). Naye code hamesha salted +
+     * sahi hex se store hote hain.
+     */
+    private fun allHashes(code: String): List<String> {
+        val salt = salt()
+        return listOf(
+            sha256(salt + code),
+            sha256Legacy(salt + code),
+            sha256(code),
+            sha256Legacy(code)
+        )
     }
 
+    private fun sha256(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return toHex(bytes)
+    }
+
+    /** Purana hex (v1.3.0 tak) — sirf pehle se stored hash check karne ke liye. */
+    private fun sha256Legacy(input: String): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+        return toHexLegacy(bytes)
+    }
+
+    /**
+     * Sahi hex (J2-p14): byte ko pehle unsigned int banayein, warna
+     * "%02x" negative byte ko sign-extend kar deta hai (0xFF ->
+     * "ffffffff") aur hash ghair-mayari lamba ho jata hai.
+     */
+    private fun toHex(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+
+    /** Purana (ghalat) hex — sirf migration check ke liye, naya code kabhi is se nahi banta. */
+    private fun toHexLegacy(bytes: ByteArray): String =
+        bytes.joinToString("") { "%02x".format(it) }
+
     companion object {
+        private const val TAG = "OfflineCodeStore"
         private const val PREFS_NAME = "amg_lock_offline"
         /** Encrypted file — SecurePrefs purani plain file se yahan migrate karta hai (PU-M7). */
         private const val PREFS_NAME_ENCRYPTED = "amg_lock_offline_enc"
@@ -181,7 +265,13 @@ class OfflineCodeStore(context: Context) {
         private const val KEY_PENDING_REPORT = "offline_code_pending_report"
         private const val KEY_PENDING_RETRY_AFTER = "offline_code_pending_retry_after"
         private const val KEY_SALT = "offline_code_salt"
+        private const val KEY_CODE_ATTEMPTS = "offline_code_attempts"
+        private const val KEY_CODE_LOCKED_UNTIL = "offline_code_locked_until"
         /** 429 (too_many_attempts) ke baad retry se pehle ka waqfa — server 1 ghante ke liye block karta hai. */
         private const val RATE_LIMIT_BACKOFF_MS = 60L * 60L * 1000L
+        /** Ghalat code ki kitni koshishon ke baad rok lage (J2-m32). */
+        private const val MAX_CODE_ATTEMPTS = 5
+        /** Rok ki muddat — 15 minute (J2-m32). */
+        private const val CODE_LOCKOUT_MS = 15L * 60L * 1000L
     }
 }

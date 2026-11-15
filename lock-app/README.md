@@ -21,7 +21,9 @@ Customer jab phone qist par leta hai, to uske phone mein ye app hoti hai.
 - **Qist late ho** → pehle **warning** aati hai, grace period (3 / 5 / 7 din) chalta hai.
 - **Grace khatam ho jaye** → phone **lock** ho jata hai.
 - **Qist ada kare** → phone **khud khul** jata hai.
-- **Aakhri qist ada ho jaye** → phone **hamesha ke liye khul** jata hai, ye app khud uninstall ho jati hai, phone poora customer ka.
+- **Aakhri qist ada ho jaye** → phone **hamesha ke liye khul** jata hai, phir
+  customer "App Uninstall Karein" dabata hai to app uninstall ho jati hai
+  (app khud uninstall nahi hoti), phone poora customer ka.
 
 ## Do hisse — dobara yaad rakhein
 
@@ -79,10 +81,13 @@ lock-app/
         │   ├── BootReceiver.kt           ← reboot ke baad lock wapas lagana
         │   ├── LockStateStore.kt         ← phone ki halat save karna
         │   ├── OfflineCodeStore.kt       ← offline code ka hash + ek-dafa istemal
-        │   ├── SecurePrefs.kt            ← encrypted storage (PU-M7)
+        │   ├── SecurePrefs.kt            ← encrypted storage (PU-M7, v1.4.0: fail-closed — kabhi plaintext nahi)
         │   ├── FcmManager.kt             ← FCM push token (Wave 5.4)
         │   ├── AmgFirebaseMessagingService.kt ← push milne par foran check-in
         │   ├── QrProvisioning.kt         ← pairing QR parse + provisioning extras
+        │   ├── BootState.kt              ← device-protected boot state (v1.4.0: locked boot par lock)
+        │   ├── LocalDeadlineLock.kt      ← offline deadline lock (v1.4.0, J2-M14)
+        │   ├── DeadlineCheckWorker.kt    ← 15-min deadline check, bina network ke (v1.4.0)
         │   └── DeviceInfo.kt             ← phone ki pehchan (ANDROID_ID)
         └── res/                          ← layouts, colours (AMG navy/emerald), strings
 ```
@@ -145,19 +150,29 @@ Phir app kholein → Server URL + pairing code (dashboard se) → **Register**.
   Paid domain baad mein aaye ga, tab default badal jaye ga.
 - Endpoints (device server se — dashboard ki synced replica):
   - `POST /api/device/register` — `{ pairingCode, imei, model, androidVersion,
-    deviceId?, fcmToken? }` → `deviceId`, `resetPin` (v2.1)
-  - `POST /api/device/checkin` — `{ deviceId, pairingCode, fcmToken? }` →
+    deviceId?, fcmToken? }` → `deviceId`, `resetPin` (v2.1),
+    `dashboardAccountId` (v1.4.0 / unified-4)
+  - `POST /api/device/checkin` — `{ deviceId, pairingCode, fcmToken?,
+    deviceOwnerLost? }` →
     `stay_unlocked | warn | lock_now | permanent_unlock`
     (+ `dueDate`, `remainingAmount`, `graceDaysLeft`, `offlineUnlockCode` jab lock ho,
-    `installmentNumber` / `installmentTotal` v2.1 mein)
+    `installmentNumber` / `installmentTotal` v2.1 mein,
+    `schedule` + `graceDays` v1.4.0 / unified-4 mein,
+    `offlineCodeUsed` jab dashboard code redeem kar chuka ho)
   - `POST /api/device/offline-code-used` — code istemal hone ki khabar
-- **FCM push (Wave 5.4):** server unlock/completed par push bhejta hai
+- **FCM push (Wave 5.4):** server unlock/lock/completed par push bhejta hai
   (token register/check-in mein jata hai) aur phone foran check-in karta
-  hai — payment ke baad 15 minute ka intezar nahi hota. Firebase setup
+  hai — payment ke baad 15 minute ka intezar nahi hota. Sirf typed push
+  (`type: "amg_checkin"`) check-in karati hai (v1.4.0, J2-p19). Firebase setup
   ke baghair push band rehta hai aur 15-minute check-in hi chalta hai
-  (setup: `hidden_files/fcm-setup-guide.md`, Mubeen ka step).
+  (setup: `hidden_files/fcm-setup-guide.md`, Mubeen ka step —
+  service-account auth, purana server key ab kaam nahi karta).
 - Internet na ho to phone **purani halat** par rehta hai — internet band
   karke unlock nahi ho sakta, aur payment ke baad galat lock bhi nahi lagta.
+  **Lekin (v1.4.0, J2-M14):** agar phone due date + grace + **48 ghante**
+  tak offline rahe to wo **khud lock** ho jata hai (local deadline lock,
+  aakhri sync wale schedule se). Internet wapas aane par kamyab check-in
+  (payment ke baad) isay foran khol deti hai.
 
 ## Test scenarios
 
@@ -172,7 +187,7 @@ Poori list **`TESTING.md`** mein hai. Mukhtasar:
 | 5 | Lock + internet band + offline code | Code se phone khule, code dobara na chale |
 | 6 | Reboot (lock halat mein) | Lock wapas aaye |
 | 7 | Reset / uninstall ki koshish | Block ho (Device Owner) |
-| 8 | Aakhri qist | Permanent unlock, app khud uninstall |
+| 8 | Aakhri qist | Permanent unlock, customer button daba kar app uninstall kare |
 
 ---
 
@@ -181,23 +196,32 @@ Poori list **`TESTING.md`** mein hai. Mukhtasar:
 **Tayyar (is folder mein):**
 - Poora Android source project (Kotlin, Device Owner, WorkManager check-in)
 - Lock screen (Screen 08 design), warning flow, offline one-time code
-- Auto lock / auto unlock / permanent unlock + self-uninstall
-- Anti-tamper rules (uninstall block, factory-reset block, lock-task pinning)
+- Auto lock / auto unlock / permanent unlock + uninstall button
+  (app khud uninstall nahi hoti — customer button dabata hai, J1-m69)
+- Anti-tamper rules (uninstall block, factory-reset block, lock-task pinning,
+  Safe Mode + USB debugging block v1.4.0)
 - QR provisioning guide, build guide, test scenarios
 - Encrypted storage (PU-M7, v1.2.0) — SecurePrefs dekhein
+  (v1.4.0: fail-closed — Keystore masle par kabhi plaintext nahi, J2-M17)
 - Reset PIN + re-register guard + salted offline-code hash (v2.1, v1.2.1)
 - **FCM push client (Wave 5.4, v1.3.0)** — bina google-services.json ke bhi
   compile hota hai (FCM tab band rehta hai); Firebase setup Mubeen ka step hai
 - **QR pairing scan (A-M13, v1.3.0)** — dashboard ka pairing QR camera se
   scan karke Setup pre-fill; provisioning admin extras bhi parhe jate hain
+- **Audit round 2 fixes (v1.4.0)** — local deadline lock (offline reh kar
+  lock se bachna band — due + grace + 48 ghante ke baad phone khud lock;
+  V2 §1 ke fail-open-offline rule mein tabdeeli, Mubeen ka faisla),
+  reset PIN lazmi + 5 ghalat koshishon par 15-minute rok, server URL lock
+  (reset ke baad bhi wahi URL), Safe Mode / USB debugging block, direct-boot
+  lock, offline-code throttling, notification re-prompt, connection test
 
 **Baqi hai (asal phone par):**
 - APK build karna (GitHub Actions se debug APK, ya Android Studio)
-- QR se test phone provision karna + dummy user se 11 test scenarios
+- QR se test phone provision karna + dummy user se 13 test scenarios
 - Firebase setup (FCM ke liye) + release APK host karna (QR provisioning
   ke liye) — dono Mubeen ke steps hain, guides `hidden_files/` mein hain
 
-**Hadd (honest limits):** Safe Mode boot Android block nahi karne deta
-(lock normal boot par wapas aata hai); recovery se forced reset + FRP hi
+**Hadd (honest limits):** Safe Mode aur USB debugging ab Device Owner
+restriction se block hain (v1.4.0); recovery se forced reset + FRP hi
 bachat hai; firmware flash karne wala expert kisi bhi software lock ko
 tod sakta hai — ye aam customer ke liye hai, technician ke liye nahi.

@@ -73,6 +73,15 @@
             android:backgroundTint="@color/emerald"
             android:text="@string/completed_uninstall_button" />
 
+        <!-- J1-m70: dobara enroll — phone dobara qist par bechna ho. -->
+        <Button
+            android:id="@+id/btnReEnroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="@color/navy"
+            android:text="@string/completed_reenroll_button" />
+
         <TextView
             android:id="@+id/tvUninstallStatus"
             android:layout_width="match_parent"

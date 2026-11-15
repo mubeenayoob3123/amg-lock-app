@@ -29,6 +29,12 @@ import android.content.SharedPreferences
  *  - lastCheckInAt / lastCheckInResult / lastCheckInStatus /
  *    lastCheckInAttemptAt — check-in ki halat (F-31: khamosh retry
  *    ki bajaye UI par nazar aaye ke aakhri check kaisa raha)
+ *  - v1.4.0 (audit round 2): dashboardAccountId (J1-m55), scheduleJson
+ *    + graceDays + localLock (J2-M14 offline deadline lock),
+ *    resetPinIssued / resetPinAttempts / resetPinLockedUntil (J2-M15),
+ *    serverUrlLocked (J2-M15c), consecutiveNotRegistered (J2-m34),
+ *    completionPending (J2-m35), fcmTokenFetchAttempts /
+ *    fcmTokenNextRetryAt (J1-m58).
  */
 enum class LockState { ACTIVE, WARNING, LOCKED, COMPLETED }
 
@@ -61,6 +67,109 @@ class LockStateStore(context: Context) {
     var accountId: String
         get() = prefs.getString(KEY_ACCOUNT_ID, "") ?: ""
         set(value) = prefs.edit().putString(KEY_ACCOUNT_ID, value).apply()
+
+    /**
+     * Dashboard ka account id (v1.4.0 / server unified-4 — J1-m55).
+     * Register jawab mein `dashboardAccountId` aaye to ye set hota hai;
+     * na aaye to khaali rehta hai aur dikhane ke liye [accountId]
+     * (server ka andaruni id) istemal hota hai — dekhein [displayAccountId].
+     */
+    var dashboardAccountId: String
+        get() = prefs.getString(KEY_DASHBOARD_ACCOUNT_ID, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_DASHBOARD_ACCOUNT_ID, value).apply()
+
+    /** Dikhane wala account id — dashboard wala ho to wahi, warna server wala (J1-m55). */
+    val displayAccountId: String
+        get() = dashboardAccountId.ifBlank { accountId }
+
+    /**
+     * Server ne kabhi Reset PIN bheja hai? (J2-M15a) — PIN jari ho
+     * chuka ho lekin ab stored na ho (storage ka masla) to reset
+     * phone se NAHI ho sakta (fail open nahi). Sirf wo phone jin
+     * ko PIN kabhi mila hi nahi (purani registration) bare-confirm
+     * path istemal karte hain, dobara register tak.
+     */
+    var resetPinIssued: Boolean
+        get() = prefs.getBoolean(KEY_RESET_PIN_ISSUED, false)
+        set(value) = prefs.edit().putBoolean(KEY_RESET_PIN_ISSUED, value).apply()
+
+    /** Reset PIN ki ghalat koshishen (J2-M15b) — 5 par 15 minute ki rok lagti hai. */
+    var resetPinAttempts: Int
+        get() = prefs.getInt(KEY_RESET_PIN_ATTEMPTS, 0)
+        set(value) = prefs.edit().putInt(KEY_RESET_PIN_ATTEMPTS, value).apply()
+
+    /** Reset PIN kab tak band hai (millis, J2-M15b). 0 = koi rok nahi. */
+    var resetPinLockedUntil: Long
+        get() = prefs.getLong(KEY_RESET_PIN_LOCKED_UNTIL, 0L)
+        set(value) = prefs.edit().putLong(KEY_RESET_PIN_LOCKED_UNTIL, value).apply()
+
+    /**
+     * Server URL lock hai? (J2-M15c) — register ke baad true ho jata
+     * hai. Reset ke baad bhi URL wahi rehta hai (customer phone ko
+     * nakli server ki taraf nahi mod sakta); URL sirf dobara QR
+     * provisioning se badalta hai.
+     */
+    var serverUrlLocked: Boolean
+        get() = prefs.getBoolean(KEY_SERVER_URL_LOCKED, false)
+        set(value) = prefs.edit().putBoolean(KEY_SERVER_URL_LOCKED, value).apply()
+
+    // --- v1.4.0 (J2-M14): aakhri sync wala schedule — offline deadline lock ke liye ---
+
+    /**
+     * Aakhri kamyab check-in par server se mila schedule — raw JSON
+     * array, masalan [{"seq":1,"dueDate":"2026-11-10","amount":10000,
+     * "paidAmount":0}]. "" = server ne schedule bheja hi nahi (purana
+     * server) — tab purane fields (overdueDueDate / nextDueDate)
+     * fallback hain. LocalDeadlineLock isi se pehli na ada shuda
+     * qist ki tareekh nikalta hai.
+     */
+    var scheduleJson: String
+        get() = prefs.getString(KEY_SCHEDULE_JSON, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_SCHEDULE_JSON, value).apply()
+
+    /**
+     * Account ki grace (din mein, server se — masalan 5). -1 = server
+     * ne nahi bheja (purana server) — tab aakhri sync ke waqt ke
+     * graceDaysLeft se deadline nikaali jati hai.
+     */
+    var graceDays: Int
+        get() = prefs.getInt(KEY_GRACE_DAYS, -1)
+        set(value) = prefs.edit().putInt(KEY_GRACE_DAYS, value).apply()
+
+    /**
+     * Kya maujooda lock phone ne KHUD offline lagaya hai (local
+     * deadline lock, J2-M14)? True ho to lock screen offline wala
+     * paigham dikhati hai ("internet on karein ya dukaan se rabta
+     * karein"). Agli kamyab check-in (stay_unlocked / warn) ya
+     * server ke lock_now par ye flag saaf ho jata hai.
+     */
+    var localLock: Boolean
+        get() = prefs.getBoolean(KEY_LOCAL_LOCK, false)
+        set(value) = prefs.edit().putBoolean(KEY_LOCAL_LOCK, value).apply()
+
+    /** Lagatar `device_not_registered` check-in nakaamiyan (J2-m34) — 3 par dobara register ka prompt. */
+    var consecutiveNotRegistered: Int
+        get() = prefs.getInt(KEY_CONSEC_NOT_REGISTERED, 0)
+        set(value) = prefs.edit().putInt(KEY_CONSEC_NOT_REGISTERED, value).apply()
+
+    /**
+     * Completion adhoori hai (J2-m35): aakhri qist ada ho gayi lekin
+     * Device Owner hatne ki tasdeeq nahi hui — state COMPLETED NAHI
+     * hui, agli check-in dobara koshish kare gi.
+     */
+    var completionPending: Boolean
+        get() = prefs.getBoolean(KEY_COMPLETION_PENDING, false)
+        set(value) = prefs.edit().putBoolean(KEY_COMPLETION_PENDING, value).apply()
+
+    /** FCM token fetch ki nakaam koshishen (J1-m58) — backoff ke liye. */
+    var fcmTokenFetchAttempts: Int
+        get() = prefs.getInt(KEY_FCM_FETCH_ATTEMPTS, 0)
+        set(value) = prefs.edit().putInt(KEY_FCM_FETCH_ATTEMPTS, value).apply()
+
+    /** FCM token dobara kab lena hai (millis, J1-m58). 0 = foran koshish ho sakti hai. */
+    var fcmTokenNextRetryAt: Long
+        get() = prefs.getLong(KEY_FCM_NEXT_RETRY_AT, 0L)
+        set(value) = prefs.edit().putLong(KEY_FCM_NEXT_RETRY_AT, value).apply()
 
     /**
      * Shop ka Reset PIN (v2.1 — server register jawab mein deta hai).
@@ -194,7 +303,19 @@ class LockStateStore(context: Context) {
         private const val KEY_PAIRING_CODE = "pairing_code"
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_ACCOUNT_ID = "account_id"
+        private const val KEY_DASHBOARD_ACCOUNT_ID = "dashboard_account_id"
         private const val KEY_RESET_PIN = "reset_pin"
+        private const val KEY_RESET_PIN_ISSUED = "reset_pin_issued"
+        private const val KEY_RESET_PIN_ATTEMPTS = "reset_pin_attempts"
+        private const val KEY_RESET_PIN_LOCKED_UNTIL = "reset_pin_locked_until"
+        private const val KEY_SERVER_URL_LOCKED = "server_url_locked"
+        private const val KEY_SCHEDULE_JSON = "schedule_json"
+        private const val KEY_GRACE_DAYS = "grace_days"
+        private const val KEY_LOCAL_LOCK = "local_deadline_lock"
+        private const val KEY_CONSEC_NOT_REGISTERED = "consec_not_registered"
+        private const val KEY_COMPLETION_PENDING = "completion_pending"
+        private const val KEY_FCM_FETCH_ATTEMPTS = "fcm_fetch_attempts"
+        private const val KEY_FCM_NEXT_RETRY_AT = "fcm_next_retry_at"
         private const val KEY_FCM_TOKEN = "fcm_token"
         private const val KEY_REGISTERED = "registered"
         /** Key for the lock-state preference (observed by LockActivity). */
